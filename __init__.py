@@ -32,12 +32,14 @@ class SlideProcessor:
         slides = [slide for ext in self.extensions for slide in glob.glob(os.path.join(self.slides_path, ext))]
         for slide_path in slides:
             slide = self.open_wsi_slide(slide_path)
-            mask_path = glob.glob(os.path.join(self.masks_path, os.path.basename(slide_path).split('.')[0] + "*.png"))
+            file_name = os.path.basename(slide_path).split('.')[0]
+            mask_path = glob.glob(os.path.join(self.masks_path, file_name + "*.png"))
+
             if len(mask_path) != 1:
                 print(f"No/Multiple masks found for {slide_path}")
                 continue
             mask_path = mask_path[0]
-            slide_dimensions =  slide.dimensions
+            slide_dimensions = slide.dimensions
             mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
 
             ratio_width = round(slide_dimensions[0] / mask.shape[1])
@@ -46,11 +48,16 @@ class SlideProcessor:
             contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
             for idx, contour in enumerate(contours):
+                if idx == 0:
+                    os.makedirs(os.path.join(self.output_path, file_name), exist_ok=True)
+
                 x, y, width, height = map(int, cv2.boundingRect(contour))
                 # Apply the ratios to the coordinates and dimensions
                 x, y, width, height = x * ratio_width, y * ratio_height, width * ratio_width, height * ratio_height
                 region = slide.read_region((x, y), 0, (width, height)).resize((width // self.down_sample_rate, height // self.down_sample_rate))
-                region.save(os.path.join(self.output_path, f"{os.path.basename(slide_path).split('.')[0]}_{idx+1}_region.png"))
+                img_path = os.path.join(self.output_path, file_name, f"{idx+1}_{x}_{y}_{width}_{height}_region.png")
+                print(f"Saving region to {img_path}")
+                region.save(img_path)
 
 
 def main():
