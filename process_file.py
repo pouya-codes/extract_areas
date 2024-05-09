@@ -8,11 +8,11 @@ from torchvision.transforms import ToTensor, ToPILImage
 from deepliif.models import infer_modalities, postprocess
 
 class ImageProcessor:
-    def __init__(self, model_dir, tile_size=512, post_processing=False, gpu_ids=[]):
+    def __init__(self, model_dir, tile_size=512, post_processing=True, gpu_ids=[]):
 
         self.model_dir = model_dir
         self.tile_size = tile_size
-        self.post_processing = False
+        self.post_processing = post_processing
 
         files = os.listdir(self.model_dir)
         assert 'train_opt.txt' in files, f'file train_opt.txt is missing from model directory {self.model_dir}'

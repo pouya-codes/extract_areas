@@ -24,7 +24,7 @@ class SlideProcessor:
         if not os.path.exists(self.output_path):
             os.makedirs(self.output_path, exist_ok=True)
 
-    def init_image_processor(self, model_dir, tile_size = 512, overlay_down_sample_rate = 5, post_processing = False, gpu_ids=[]):
+    def init_image_processor(self, model_dir, tile_size = 512, overlay_down_sample_rate = 5, post_processing = True, gpu_ids=[]):
         self.image_processor = ImageProcessor(model_dir, tile_size, post_processing, gpu_ids)
         self.overlay_down_sample_rate = overlay_down_sample_rate
 
