@@ -10,9 +10,9 @@
 # source /projects/ovcare/classification/pouya/miniconda3/etc/profile.d/conda.sh
 # conda activate deepliif_env
 
-DeepLIIF_PATH=/home/pouya/Develop/UBC/QA-QC/Codes/DeepLIIF
+# DeepLIIF_PATH=/home/pouya/Develop/UBC/QA-QC/Codes/DeepLIIF
 # pip install openslide-python
-export PYTHONPATH="${PYTHONPATH}:${DeepLIIF_PATH}"
+# export PYTHONPATH="${PYTHONPATH}:${DeepLIIF_PATH}"
 
 # SLIDE_PATH=/projects/ovcare/classification/pouya/QA-QC/datasets/R204_brafv600e/slides
 # MASKS_PATH=/projects/ovcare/classification/pouya/QA-QC/datasets/R204_brafv600e/masks
@@ -22,6 +22,10 @@ SLIDE_PATH="/home/pouya/Develop/UBC/QA-QC/Datasets/R204brafv600e/Slides"
 MASKS_PATH="/home/pouya/Develop/UBC/QA-QC/Datasets/R204brafv600e/Masks"
 OUTPUT_PATH="/home/pouya/Develop/UBC/QA-QC/Datasets/R204brafv600e/Results"
 MODEL_DIR="/home/pouya/Develop/UBC/QA-QC/Codes/Models/DeepLIIF_Latest_Model"
+"D:/Develop/UBC/Datasets/R204brafv600e/Slides"
+"D:/Develop/UBC/Datasets/R204brafv600e/Masks"
+"D:/Develop/UBC/Datasets/R204brafv600e/Results_new"
+"D:/Develop/UBC/DeepLIIF_Latest_Model"
+conda activate deepliif_env
 
-
-python3 __init__.py --slides_path $SLIDE_PATH --masks_path $MASKS_PATH --output_path $OUTPUT_PATH deepliif --model_dir $MODEL_DIR
+python __init__.py --slides_path "D:/Develop/UBC/Datasets/TNP_Array/Slides" --output_path "D:/Develop/UBC/Datasets/TNP_Array/Results" --annotations_path "D:/Develop/UBC/Datasets/TNP_Array/Annotations" --slide_down_sample_rate 2 --overlay_down_sample_rate 4 deepliif --model_dir "D:/Develop/UBC/DeepLIIF_Latest_Model" --tile_size 512
