@@ -1,18 +1,18 @@
 
 import os
-import os
 from deepliif.options import Options, print_options
 from deepliif.util.visualizer import save_images
 import torch
 from PIL import Image
 from torchvision.transforms import ToTensor, ToPILImage
-from deepliif.models import infer_modalities
+from deepliif.models import infer_modalities, postprocess
 
 class ImageProcessor:
-    def __init__(self, model_dir, tile_size=512, gpu_ids=[]):
+    def __init__(self, model_dir, tile_size=512, post_processing=False, gpu_ids=[]):
 
         self.model_dir = model_dir
         self.tile_size = tile_size
+        self.post_processing = False
 
         files = os.listdir(self.model_dir)
         assert 'train_opt.txt' in files, f'file train_opt.txt is missing from model directory {self.model_dir}'
@@ -55,9 +55,12 @@ class ImageProcessor:
         #     ), 'w') as f:
         #         json.dump(scoring, f, indent=2)
         
-    def test_img(self, img, eager_mode=True, color_dapi=True, color_marker=True):
+    def test_img(self, img, postprocessing = False, eager_mode=False, color_dapi=False, color_marker=False):
         img = img.convert('RGB')
         images, scoring = infer_modalities(img, self.tile_size, self.model_dir, eager_mode, color_dapi, color_marker, self.opt)
+        if (self.post_processing):
+            # https://github.com/nadeemlab/DeepLIIF?tab=readme-ov-file#cloud-api-endpoints
+            images, scoring = postprocess(img, images, self.tile_size, 'DeepLIIF', seg_thresh=150, size_thresh='auto', marker_thresh='auto', size_thresh_upper=None)
         results = {}
         for name, i in images.items():
             results[name] = i

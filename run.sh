@@ -22,10 +22,10 @@ SLIDE_PATH="/home/pouya/Develop/UBC/QA-QC/Datasets/R204brafv600e/Slides"
 MASKS_PATH="/home/pouya/Develop/UBC/QA-QC/Datasets/R204brafv600e/Masks"
 OUTPUT_PATH="/home/pouya/Develop/UBC/QA-QC/Datasets/R204brafv600e/Results"
 MODEL_DIR="/home/pouya/Develop/UBC/QA-QC/Codes/Models/DeepLIIF_Latest_Model"
-"D:/Develop/UBC/Datasets/R204brafv600e/Slides"
-"D:/Develop/UBC/Datasets/R204brafv600e/Masks"
-"D:/Develop/UBC/Datasets/R204brafv600e/Results_new"
-"D:/Develop/UBC/DeepLIIF_Latest_Model"
+"C:/Users/pouya/Develop/QA-QC/Datasets/R204brafv600e/Slides"
+"C:/Users/pouya/Develop/QA-QC/Datasets/R204brafv600e/Masks"
+"C:/Users/pouya/Develop/QA-QC/Datasets/R204brafv600e/Results_new"
+"C:/Users/pouya/Develop/QA-QC/DeepLIIF_Latest_Model"
 conda activate deepliif_env
 
-python __init__.py --slides_path "D:/Develop/UBC/Datasets/TNP_Array/Slides" --output_path "D:/Develop/UBC/Datasets/TNP_Array/Results" --annotations_path "D:/Develop/UBC/Datasets/TNP_Array/Annotations" --slide_down_sample_rate 2 --overlay_down_sample_rate 4 deepliif --model_dir "D:/Develop/UBC/DeepLIIF_Latest_Model" --tile_size 512
+python __init__.py --slides_path "C:/Users/pouya/Develop/QA-QC/Datasets/TNP_Array/Slides" --output_path "C:/Users/pouya/Develop/QA-QC/Datasets/TNP_Array/Results" --annotations_path "C:/Users/pouya/Develop/QA-QC/Datasets/TNP_Array/Annotations" --slide_down_sample_rate 2 --overlay_down_sample_rate 4 deepliif --model_dir "C:/Users/pouya/Develop/QA-QC/DeepLIIF_Latest_Model" --tile_size 512
