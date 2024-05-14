@@ -14,7 +14,7 @@ def parse_args():
     subparsers = parser.add_subparsers(dest='deepliif')
     deepliif_parser = subparsers.add_parser('deepliif')
     deepliif_parser.add_argument("--model_dir", type=str, help="Path to the unserilized model directory", required=True)
-    deepliif_parser.add_argument("--tile_size", type=int, help="Size of the tiles to be processed", default=512)
+    deepliif_parser.add_argument("--tile_size", type=int, help="Size of the tiles to be processed", default=256)
     deepliif_parser.add_argument("--post_processing", type=bool, help="Run postprocessing alogrithem on the results", default=True)
     # Add more deepliif arguments as needed
 

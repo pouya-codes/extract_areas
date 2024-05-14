@@ -1,5 +1,5 @@
 import glob, os
-OPENSLIDE_PATH = r'C:/Users/pouya/Develop/QA-QC/openslide/bin'
+OPENSLIDE_PATH = r'D:/Develop/UBC/openslide/bin'
 os.add_dll_directory(OPENSLIDE_PATH)
 import openslide
 import cv2
@@ -24,7 +24,7 @@ class SlideProcessor:
         if not os.path.exists(self.output_path):
             os.makedirs(self.output_path, exist_ok=True)
 
-    def init_image_processor(self, model_dir, tile_size = 512, overlay_down_sample_rate = 5, post_processing = True, gpu_ids=[]):
+    def init_image_processor(self, model_dir, tile_size = 256, overlay_down_sample_rate = 5, post_processing = True, gpu_ids=[]):
         self.image_processor = ImageProcessor(model_dir, tile_size, post_processing, gpu_ids)
         self.overlay_down_sample_rate = overlay_down_sample_rate
 
@@ -81,13 +81,13 @@ class SlideProcessor:
                     if hasattr(self, 'image_processor'):
 
                         region = region.resize((width // self.slide_down_sample_rate, height // self.slide_down_sample_rate))
-                        results = self.image_processor.test_img(region)
-                        overlay_channel = results["SegRefined"]
-                        np_array = np.array(overlay_channel)
+                        results = self.image_processor.test_img(region, eager_mode=True, color_dapi=True, color_marker=True)
+                        overlay_image = results["SegRefined"]
                         
-                        if (True):
+                        if (save_regions):
+                            np_array = np.array(overlay_image)
                             background = region.convert("RGBA")
-                            overlay = overlay_channel.convert("RGBA")
+                            overlay = overlay_image.convert("RGBA")
                             new_img = Image.blend(background, overlay, 0.25)
                             img_path = os.path.join(self.output_path, file_name, label, f"{x}_{y}_{width}_{height}_overlaid.png")
                             new_img.save(img_path)
@@ -97,7 +97,10 @@ class SlideProcessor:
                                                 y // self.overlay_down_sample_rate, 
                                                 width // self.overlay_down_sample_rate, 
                                                 height // self.overlay_down_sample_rate)
-
+                        
+                        width_overlay, height_overlay = overlay_image.size
+                        overlay_to_slide_ratio = self.overlay_down_sample_rate // self.slide_down_sample_rate
+                        np_array = np.array(overlay_image.resize((width_overlay //overlay_to_slide_ratio, height_overlay // overlay_to_slide_ratio)))
                         region_y, region_x = np_array.shape[0], np_array.shape[1]
 
                         region_height, region_width = y + region_y, x + region_x
@@ -114,6 +117,7 @@ class SlideProcessor:
 
             if hasattr(self, 'image_processor'):
                 final_heat_map = Image.fromarray(heat_map)
+                os.makedirs(os.path.join(self.output_path, file_name), exist_ok=True)
                 final_heat_map.save(os.path.join(self.output_path, file_name, f"{file_name}.png"))
 
 
@@ -126,7 +130,7 @@ def main():
                                args.slide_down_sample_rate)
     if args.deepliif is not None:
         processor.init_image_processor(args.model_dir, args.tile_size, args.overlay_down_sample_rate, args.post_processing)
-    processor.process_slides(save_regions=True)
+    processor.process_slides(save_regions=False)
 
 if __name__ == "__main__":
     main()

@@ -55,7 +55,7 @@ class ImageProcessor:
         #     ), 'w') as f:
         #         json.dump(scoring, f, indent=2)
         
-    def test_img(self, img, postprocessing = False, eager_mode=False, color_dapi=False, color_marker=False):
+    def test_img(self, img, eager_mode=False, color_dapi=False, color_marker=False):
         img = img.convert('RGB')
         images, scoring = infer_modalities(img, self.tile_size, self.model_dir, eager_mode, color_dapi, color_marker, self.opt)
         if (self.post_processing):
