@@ -3,13 +3,14 @@ OPENSLIDE_PATH = r'D:/Develop/UBC/openslide/bin'
 os.add_dll_directory(OPENSLIDE_PATH)
 import openslide
 import cv2
-import re
+import json
 from PIL import Image
 from process_file import ImageProcessor
 import numpy as np
 from matplotlib.path import Path
 from myparser import parse_args
 from utils import process_annotation, process_mask
+from generate_mask import MaskGenerator
 
 class SlideProcessor:
     def __init__(self, slides_path, output_path, masks_path = "", annotations_path = "", slide_down_sample_rate = 5):
@@ -23,6 +24,11 @@ class SlideProcessor:
         
         if not os.path.exists(self.output_path):
             os.makedirs(self.output_path, exist_ok=True)
+
+
+    def init_mask_generator(self, model_path):
+        self.mask_generator = MaskGenerator(model_path)
+
 
     def init_image_processor(self, model_dir, tile_size = 256, overlay_down_sample_rate = 5, post_processing = True, gpu_ids=[]):
         self.image_processor = ImageProcessor(model_dir, tile_size, post_processing, gpu_ids)
@@ -43,17 +49,30 @@ class SlideProcessor:
             file_name = os.path.basename(slide_path).split('.')[0]
             slide_dimensions = slide.dimensions
 
+            os.makedirs(os.path.join(self.output_path, file_name), exist_ok=True)
+
             has_annotation, has_mask = False, False
             if self.masks_path:
                 mask_path = glob.glob(os.path.join(self.masks_path, file_name + "*.png"))
                 has_mask = len(mask_path) == 1
+                mask_path = mask_path[0]
+
             if self.annotations_path:
                 annotation_path = glob.glob(os.path.join(self.annotations_path, file_name + "*.txt"))
                 has_annotation = len(annotation_path) == 1
 
             if not has_annotation and not has_mask:
-                print(f"No mask/annotation found for {slide_path}")
-                continue
+                if hasattr(self, 'mask_generator'):
+                    print(f"Generating mask for {slide_path}")
+                    mask, thumb = self.mask_generator.generate_mask(slide_path)
+                    thumb.write_to_file(os.path.join(self.output_path, file_name, f"{file_name}_thumb.png"))
+                    mask_path = os.path.join(self.output_path, file_name, f"{file_name}_mask.png")
+                    if(mask is not None):
+                        has_mask = True
+                        cv2.imwrite(mask_path, mask)
+                else:
+                    print(f"No mask/annotation found for {slide_path}. Skipping...")
+                    continue
 
 
             if hasattr(self, 'image_processor'):
@@ -65,7 +84,6 @@ class SlideProcessor:
 
             
             if has_mask:
-                mask_path = mask_path[0]
                 regions = process_mask(mask_path, slide_dimensions)
 
             regions["Mask"] = regions.get("Mask", [])
@@ -81,7 +99,7 @@ class SlideProcessor:
                     if hasattr(self, 'image_processor'):
 
                         region = region.resize((width // self.slide_down_sample_rate, height // self.slide_down_sample_rate))
-                        results = self.image_processor.test_img(region, eager_mode=True, color_dapi=True, color_marker=True)
+                        results, scoring = self.image_processor.test_img(region, eager_mode=True, color_dapi=True, color_marker=True)
                         overlay_image = results["SegRefined"]
                         
                         if (save_regions):
@@ -91,6 +109,10 @@ class SlideProcessor:
                             new_img = Image.blend(background, overlay, 0.25)
                             img_path = os.path.join(self.output_path, file_name, label, f"{x}_{y}_{width}_{height}_overlaid.png")
                             new_img.save(img_path)
+                            if scoring is not None:
+                                json_path = os.path.join(self.output_path, file_name, label, f"{x}_{y}_{width}_{height}.json")
+                                with open(json_path, 'w') as f:
+                                    json.dump(scoring, f, indent=2)
 
 
                         x, y, width, height = ( x // self.overlay_down_sample_rate,
@@ -130,7 +152,11 @@ def main():
                                args.slide_down_sample_rate)
     if args.deepliif is not None:
         processor.init_image_processor(args.model_dir, args.tile_size, args.overlay_down_sample_rate, args.post_processing)
-    processor.process_slides(save_regions=False)
+
+    if args.mask_generator is not None:
+        processor.init_mask_generator(args.model_path)
+
+    processor.process_slides(save_regions=True)
 
 if __name__ == "__main__":
     main()

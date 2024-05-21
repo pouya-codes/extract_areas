@@ -1,0 +1,84 @@
+import pyvips
+from segment_anything import SamPredictor, sam_model_registry, SamAutomaticMaskGenerator
+import cv2
+import glob, os
+import torch
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.spatial import distance
+if torch.cuda.is_available():
+    print("CUDA is available")
+
+class MaskGenerator:
+    def __init__(self, model_path):
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"Model checkpoint not found at {model_path}")
+        self.sam = sam_model_registry["vit_h"](checkpoint=model_path)
+        self.predictor = SamPredictor(self.sam)
+        self.sam.to(device = "cuda")
+        self.mask_generator = SamAutomaticMaskGenerator(self.sam)
+
+
+    def generate_mask(self, slide_path, thumbnail_width = 2000):
+        thumb = pyvips.Image.thumbnail(slide_path, thumbnail_width)
+        thumb = thumb.colourspace('srgb')
+        thumb_np = np.ndarray(buffer=thumb.write_to_memory(),
+                            dtype=np.uint8,
+                            shape=[thumb.height, thumb.width, thumb.bands])[:, :, :3]
+        masks = self.mask_generator.generate(thumb_np)
+        final_mask = self.process_masks(thumb_np, masks)
+        # mask_path = os.path.join(path, "thumb", os.path.basename(slide).replace(".svs", "_mask.png"))
+        # thumb.write_to_file(os.path.join(path, "thumb", os.path.basename(slide).replace(".svs", "_thumb.png")))
+        # cv2.imwrite(mask_path, final_mask)
+        return final_mask, thumb
+
+    
+
+    def is_circle(self, mask, tolerance_ratio=0.5):
+        segmentation = mask['segmentation']
+        # Get the indices of the non-zero elements
+        y, x = np.nonzero(segmentation)
+        # Calculate the centroid of the non-zero elements
+        centroid = [np.mean(x), np.mean(y)]
+        # Calculate the distances from the centroid to all non-zero elements
+        distances = distance.cdist([centroid], list(zip(x, y)), 'euclidean')[0]
+        average_distance = np.mean(distances)
+        tolerance = tolerance_ratio * average_distance  # 5% of the average distance
+        # Check if the distances are approximately equal
+        # Here, np.std computes the standard deviation, which measures how spread out the distances are
+        # If the standard deviation is small, the distances are approximately equal
+        is_circle = np.std(distances) < tolerance  # Set tolerance as needed
+        return is_circle
+
+    def process_masks(self, img, masks, median_ratio=0.6):
+        if len(masks) == 0:
+            return
+        areas_median = np.median([mask['area'] for mask in masks])
+        final_mask = np.zeros((img.shape[0], img.shape[1]))
+        for mask in masks:
+            if abs(mask['area'] - areas_median) < areas_median * median_ratio and self.is_circle(mask):
+                final_mask[np.where(mask['segmentation']!=0)] = 255
+        return final_mask
+        
+
+
+# sam = sam_model_registry["vit_h"](checkpoint="models/sam_vit_h.pth")
+# predictor = SamPredictor(sam)
+# sam.to(device = "cuda")
+# mask_generator = SamAutomaticMaskGenerator(sam)
+
+# path = r"D:\Develop\UBC\Datasets\TNP_Array\Slides"
+# for slide in glob.glob(os.path.join(path, "*.svs")):
+#     thumb = pyvips.Image.thumbnail(slide, width = 2000)
+#     thumb = thumb.colourspace('srgb')
+#     thumb.write_to_file(os.path.join(path, "thumb", os.path.basename(slide).replace(".svs", "_thumb.png")))
+#     thumb_np = np.ndarray(buffer=thumb.write_to_memory(),
+#                           dtype=np.uint8,
+#                           shape=[thumb.height, thumb.width, thumb.bands])[:, :, :3]
+#     masks = mask_generator.generate(thumb_np)
+#     final_mask = process_masks(thumb_np, masks)
+#     mask_path = os.path.join(path, "thumb", os.path.basename(slide).replace(".svs", "_mask.png"))
+#     cv2.imwrite(mask_path, final_mask)
+
+    
+

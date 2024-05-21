@@ -64,5 +64,5 @@ class ImageProcessor:
         results = {}
         for name, i in images.items():
             results[name] = i
-        return results
+        return results, scoring
 
