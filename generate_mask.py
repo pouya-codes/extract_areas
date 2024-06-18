@@ -27,9 +27,6 @@ class MaskGenerator:
                             shape=[thumb.height, thumb.width, thumb.bands])[:, :, :3]
         masks = self.mask_generator.generate(thumb_np)
         final_mask = self.process_masks(thumb_np, masks)
-        # mask_path = os.path.join(path, "thumb", os.path.basename(slide).replace(".svs", "_mask.png"))
-        # thumb.write_to_file(os.path.join(path, "thumb", os.path.basename(slide).replace(".svs", "_thumb.png")))
-        # cv2.imwrite(mask_path, final_mask)
         return final_mask, thumb
 
     
@@ -56,29 +53,12 @@ class MaskGenerator:
         areas_median = np.median([mask['area'] for mask in masks])
         final_mask = np.zeros((img.shape[0], img.shape[1]))
         for mask in masks:
-            if abs(mask['area'] - areas_median) < areas_median * median_ratio and self.is_circle(mask):
+            if abs(mask['area'] - areas_median) < areas_median * median_ratio: # and self.is_circle(mask):
+            # if mask['area'] > 20000 and mask['area'] < 500000:
                 final_mask[np.where(mask['segmentation']!=0)] = 255
         return final_mask
         
 
-
-# sam = sam_model_registry["vit_h"](checkpoint="models/sam_vit_h.pth")
-# predictor = SamPredictor(sam)
-# sam.to(device = "cuda")
-# mask_generator = SamAutomaticMaskGenerator(sam)
-
-# path = r"D:\Develop\UBC\Datasets\TNP_Array\Slides"
-# for slide in glob.glob(os.path.join(path, "*.svs")):
-#     thumb = pyvips.Image.thumbnail(slide, width = 2000)
-#     thumb = thumb.colourspace('srgb')
-#     thumb.write_to_file(os.path.join(path, "thumb", os.path.basename(slide).replace(".svs", "_thumb.png")))
-#     thumb_np = np.ndarray(buffer=thumb.write_to_memory(),
-#                           dtype=np.uint8,
-#                           shape=[thumb.height, thumb.width, thumb.bands])[:, :, :3]
-#     masks = mask_generator.generate(thumb_np)
-#     final_mask = process_masks(thumb_np, masks)
-#     mask_path = os.path.join(path, "thumb", os.path.basename(slide).replace(".svs", "_mask.png"))
-#     cv2.imwrite(mask_path, final_mask)
 
     
 

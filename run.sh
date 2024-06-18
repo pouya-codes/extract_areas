@@ -11,3 +11,7 @@
 # source /projects/ovcare/classification/pouya/miniconda3/etc/profile.d/conda.sh
 conda activate deepliif_env
 python __init__.py --slides_path "D:/Develop/UBC/Datasets/TNP_Array/Slides" --output_path "D:/Develop/UBC/Datasets/TNP_Array/Results_new" --slide_down_sample_rate 4 --overlay_down_sample_rate 4 --deepliif --model_dir "D:/Develop/UBC/DeepLIIF_Latest_Model" --tile_size 256 --mask_generator --model_path "D:/Develop/UBC/extract_areas/models/sam_vit_h.pth"
+
+python __init__.py --slides_path "D:/Develop/UBC/Datasets/Breast_TMA/Slides" --output_path "D:/Develop/UBC/Datasets/Breast_TMA/Results_new" --slide_down_sample_rate 4 --overlay_down_sample_rate 4 --deepliif --model_dir "D:/Develop/UBC/DeepLIIF_Latest_Model" --tile_size 256 --mask_generator --model_path "D:/Develop/UBC/extract_areas/models/sam_vit_h.pth"
+python __init__.py --slides_path "D:/Develop/UBC/Datasets/R204brafv600e/Slides" --output_path "D:/Develop/UBC/Datasets/R204brafv600e/Results_new" --slide_down_sample_rate 4 --overlay_down_sample_rate 4 --deepliif --model_dir "D:/Develop/UBC/DeepLIIF_Latest_Model" --tile_size 256 --mask_generator --model_path "D:/Develop/UBC/extract_areas/models/sam_vit_h.pth"
+python __init__.py --slides_path "D:/Develop/UBC/Datasets/TNP_Array/Slides" --output_path "D:/Develop/UBC/Datasets/TNP_Array/Results_new" --slide_down_sample_rate 1 --overlay_down_sample_rate 4 --deepliif --model_dir "D:/Develop/UBC/DeepLIIF_Latest_Model" --tile_size 256 --mask_generator --model_path "D:/Develop/UBC/extract_areas/models/sam_vit_h.pth"
