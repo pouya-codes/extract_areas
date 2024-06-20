@@ -27,14 +27,14 @@ def process_annotation(annotation_path):
 
 def process_mask(mask_path, slide_dimensions):
     mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
-    mask_ratio_width = round(slide_dimensions[0] / mask.shape[1])
-    mask_ratio_height = round(slide_dimensions[1] / mask.shape[0])
+    mask_ratio_width = slide_dimensions[0] / mask.shape[1]
+    mask_ratio_height = slide_dimensions[1] / mask.shape[0]
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     regions = {"Mask": []}
     for idx, contour in enumerate(contours):
         x, y, width, height = map(int, cv2.boundingRect(contour))
         # Apply the ratios to the coordinates and dimensions
         x, y, width, height = x * mask_ratio_width, y * mask_ratio_height, width * mask_ratio_width, height * mask_ratio_height
-        region = [x, y, width, height]
+        region = [round(x), round(y), round(width), round(height)]
         regions['Mask'].append(region)
     return regions

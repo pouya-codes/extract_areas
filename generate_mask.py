@@ -18,7 +18,7 @@ class MaskGenerator:
         self.sam.to(device = "cuda")
         self.mask_generator = SamAutomaticMaskGenerator(self.sam)
 
-
+  
     def generate_mask(self, slide_path, thumbnail_width = 2000):
         thumb = pyvips.Image.thumbnail(slide_path, thumbnail_width)
         thumb = thumb.colourspace('srgb')
@@ -30,7 +30,6 @@ class MaskGenerator:
         return final_mask, thumb
 
     
-
     def is_circle(self, mask, tolerance_ratio=0.5):
         segmentation = mask['segmentation']
         # Get the indices of the non-zero elements

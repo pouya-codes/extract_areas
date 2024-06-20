@@ -11,6 +11,8 @@ from matplotlib.path import Path
 from myparser import parse_args
 from utils import process_annotation, process_mask
 from generate_mask import MaskGenerator
+import pyvips
+import time
 
 class SlideProcessor:
     def __init__(self, slides_path, output_path, masks_path = "", annotations_path = "", slide_down_sample_rate = 5):
@@ -36,7 +38,8 @@ class SlideProcessor:
 
     def open_wsi_slide(self, slide_path):
         try:
-            slide = openslide.OpenSlide(slide_path)
+            slide = pyvips.Image.new_from_file(slide_path)
+            # slide = openslide.OpenSlide(slide_path)
             return slide
         except Exception as e:
             print(f"Cannot open {slide_path}\nError: {e}")
@@ -46,8 +49,10 @@ class SlideProcessor:
         slides = [slide for ext in self.extensions for slide in glob.glob(os.path.join(self.slides_path, ext))]
         for slide_path in slides:
             slide = self.open_wsi_slide(slide_path)
+            # slide = pyvips.Image.new_from_file(slide_path)
             file_name = os.path.basename(slide_path).split('.')[0]
-            slide_dimensions = slide.dimensions
+            slide_dimensions = slide.width, slide.height
+            # slide_dimensions = slide.dimensions
 
             os.makedirs(os.path.join(self.output_path, file_name), exist_ok=True)
 
@@ -90,12 +95,15 @@ class SlideProcessor:
             for label, areas in regions.items():
                 for area in areas:
                     x, y, width, height = area
-                    region = slide.read_region((x, y), 0, (width, height))
+                    region = slide.crop(x, y, width, height)
+                    region = Image.fromarray(region.numpy())
+                    # region = slide.read_region((x, y), 0, (width, height))
                     if (save_regions):
                         os.makedirs(os.path.join(self.output_path, file_name, label), exist_ok=True)
                         img_path = os.path.join(self.output_path, file_name, label, f"{x}_{y}_{width}_{height}.png")
+                        # region.write_to_file(img_path)
                         region.save(img_path)
-                    
+                    # continue
                     if hasattr(self, 'image_processor'):
 
                         region = region.resize((width // self.slide_down_sample_rate, height // self.slide_down_sample_rate))
@@ -156,7 +164,7 @@ def main():
     if args.mask_generator is not None:
         processor.init_mask_generator(args.model_path)
 
-    processor.process_slides(save_regions=True)
+    processor.process_slides(save_regions=False)
 
 if __name__ == "__main__":
     main()
