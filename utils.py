@@ -1,5 +1,6 @@
 import re
 from collections import defaultdict
+from matplotlib.path import Path
 import cv2
 def process_annotation(annotation_path):
     regions = defaultdict(list)
@@ -16,13 +17,13 @@ def process_annotation(annotation_path):
             # Convert the points to integers
             points = [(int(float(x.replace(']',''))), int(float(y.replace(']','')))) for x, y in points]
             # # Create a path from the points
-            # path = Path(points)
+            path = Path(points)
             # Calculate the bounding box of the polygon
-            min_x = min(x for x, y in points)
-            max_x = max(x for x, y in points)
-            min_y = min(y for x, y in points)
-            max_y = max(y for x, y in points)
-            regions[label].append((min_x, min_y, max_x - min_x, max_y - min_y))
+            min_x = max(0, min(x for x, y in points))
+            max_x = max(0, max(x for x, y in points))
+            min_y = max(0, min(y for x, y in points))
+            max_y = max(0, max(y for x, y in points))
+            regions[label].append((min_x, min_y, max_x - min_x, max_y - min_y, path))
     return regions
 
 def process_mask(mask_path, slide_dimensions):

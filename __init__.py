@@ -11,6 +11,7 @@ from matplotlib.path import Path
 from myparser import parse_args
 from utils import process_annotation, process_mask
 from generate_mask import MaskGenerator
+from patch_extractor import PatchExtractor
 import pyvips
 import time
 
@@ -27,6 +28,8 @@ class SlideProcessor:
         if not os.path.exists(self.output_path):
             os.makedirs(self.output_path, exist_ok=True)
 
+    def init_annotation_exporter(self, patch_size, positive_annotations_label):
+        self.patch_exporter = PatchExtractor(patch_size, positive_annotations_label)
 
     def init_mask_generator(self, model_path):
         self.mask_generator = MaskGenerator(model_path)
@@ -48,11 +51,17 @@ class SlideProcessor:
     def process_slides(self, save_regions = False):
         slides = [slide for ext in self.extensions for slide in glob.glob(os.path.join(self.slides_path, ext))]
         for slide_path in slides:
+            print(f"Processing {slide_path}")
             slide = self.open_wsi_slide(slide_path)
             # slide = pyvips.Image.new_from_file(slide_path)
             file_name = os.path.basename(slide_path).split('.')[0]
             slide_dimensions = slide.width, slide.height
+            regions = None
             # slide_dimensions = slide.dimensions
+
+            if os.path.exists(os.path.join(self.output_path, file_name)):
+                print(f"Skipping {file_name} as it already exists in the output path")
+                continue
 
             os.makedirs(os.path.join(self.output_path, file_name), exist_ok=True)
 
@@ -66,7 +75,7 @@ class SlideProcessor:
                 annotation_path = glob.glob(os.path.join(self.annotations_path, file_name + "*.txt"))
                 has_annotation = len(annotation_path) == 1
 
-            if not has_annotation and not has_mask:
+            if not self.annotations_path and not has_annotation and not has_mask:
                 if hasattr(self, 'mask_generator'):
                     print(f"Generating mask for {slide_path}")
                     mask, thumb = self.mask_generator.generate_mask(slide_path)
@@ -90,11 +99,17 @@ class SlideProcessor:
             
             if has_mask:
                 regions = process_mask(mask_path, slide_dimensions)
+            
+            if regions is None: # If no regions are found
+                continue
 
             regions["Mask"] = regions.get("Mask", [])
+            
+            os.makedirs(os.path.join(self.output_path, file_name), exist_ok=True)
+
             for label, areas in regions.items():
                 for area in areas:
-                    x, y, width, height = area
+                    x, y, width, height, *_ = area if len(area) == 5 else area + [None]
                     region = slide.crop(x, y, width, height)
                     region = Image.fromarray(region.numpy())
                     # region = slide.read_region((x, y), 0, (width, height))
@@ -109,6 +124,9 @@ class SlideProcessor:
                         region = region.resize((width // self.slide_down_sample_rate, height // self.slide_down_sample_rate))
                         results, scoring = self.image_processor.test_img(region, eager_mode=True, color_dapi=True, color_marker=True)
                         overlay_image = results["SegRefined"]
+
+                        if hasattr(self, 'patch_exporter'):
+                            self.patch_exporter.export_patches(region, overlay_image, label , area, file_name)
                         
                         if (save_regions):
                             np_array = np.array(overlay_image)
@@ -163,6 +181,9 @@ def main():
 
     if args.mask_generator is not None:
         processor.init_mask_generator(args.model_path)
+
+    if args.export_positive_annotations is not None:
+        processor.init_annotation_exporter( 32, args.positive_annotations_label)
 
     processor.process_slides(save_regions=False)
 
