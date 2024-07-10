@@ -7,24 +7,30 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 class PatchExtractor:
-    def __init__(self, patch_size, annotation_label, stride=1):
+    def __init__(self, patch_size, annotation_label, output_path, window_size=32, stride=1):
         self.patch_size = patch_size
         self.annotation_label = annotation_label
+        self.output_path = output_path
+        self.window_size = window_size
         self.stride = stride
 
 
 
-    def save_centers(self, centers, image, window_size=64):
-        # Convert the PIL Image to an RGBA image (if not already in that mode)
-        image_rgba = image.convert("RGBA")
+    def save_centers(self, centers, region, path, label, file_name):
+        # # Convert the PIL Image to an RGBA image (if not already in that mode)
+        # image_rgba = region.convert("RGBA")
         
-        # Create a transparent overlay
-        overlay = Image.new("RGBA", image_rgba.size, (255, 255, 255, 0))
-        draw = ImageDraw.Draw(overlay)
+        # # Create a transparent overlay
+        # overlay = Image.new("RGBA", image_rgba.size, (255, 255, 255, 0))
+        # draw = ImageDraw.Draw(overlay)
+        print(self.output_path, file_name, label)
+        os.makedirs(os.path.join(self.output_path, file_name, label), exist_ok=True)
 
-        img_array = np.array(image)
-        half_window = window_size // 2
+        img_array = np.array(region)
+        half_window = self.window_size // 2
         for center in centers:
+            if not path.contains_point(center):
+                continue
             y, x = center
             # Calculate the bounds of the window, ensuring they are within the image boundaries
             y_min = max(0, int(y) - half_window)
@@ -34,7 +40,7 @@ class PatchExtractor:
             # Extract the window
             window = img_array[y_min:y_max, x_min:x_max, :]
             # Draw a semi-transparent rectangle
-            draw.rectangle([x_min, y_min, x_max, y_max], outline=(255, 0, 0, 128))
+            # draw.rectangle([x_min, y_min, x_max, y_max], outline=(255, 0, 0, 128))
 
             # return  window
             # Check if the window needs padding
@@ -44,9 +50,9 @@ class PatchExtractor:
             #                             (0, max(0, window_size - window.shape[1]))), 
             #                     mode='constant', constant_values=0)
             img = Image.fromarray(window)
-            # img.save(f"temp/center_{int(y)}_{int(x)}.png")
-        combined = Image.alpha_composite(image_rgba, overlay)
-        combined.save("temp/centers.png")
+            img.save(os.path.join(self.output_path, file_name, label,f"{int(y)}_{int(x)}.png"))
+        # combined = Image.alpha_composite(image_rgba, overlay)
+        # combined.save("temp/centers.png")
 
 
 
@@ -63,7 +69,19 @@ class PatchExtractor:
 # num_connected_areas, centers = count_and_center_connected_areas(boundries)
 # print(f"Number of connected areas: {num_connected_areas}")
 # print("Centers of each area:", centers)
-        
+
+    def find_centers(self, coordinates_list):
+        centers = []
+        for coordinates in coordinates_list:
+            # Convert each list of coordinates to a NumPy array
+            coordinates_array = np.array(coordinates)
+            # Calculate the mean along the vertical axis for this set of coordinates
+            center = np.mean(coordinates_array, axis=0)
+            centers.append(center)
+        return np.array(centers)
+
+
+
     def extend_pixels(self, arr):
         # Create a new array to store the result
         extended = np.zeros_like(arr)
@@ -82,8 +100,10 @@ class PatchExtractor:
                     # Mark the neighborhood in the extended array
                     extended[y_min:y_max, x_min:x_max] = 255
         return extended
-    
-    def export_patches(self, slide, overlay_image, label , area, file_name):
+
+    def export_patches(self, region, cells_coords, label , area, file_name):
+        if label not in self.annotation_label:
+            return
 
         x, y, width, height, *path = area if len(area) == 5 else area + [None]
         if path is None:
@@ -91,11 +111,20 @@ class PatchExtractor:
             return
         path = path[0]
 
+        # subtract the x and y from the path vertices to covert global coordinates to local coordinates
         path.vertices -= np.array([x, y])
-        overlay_array = np.array(overlay_image)
-        positive, boundries, negatives  = [overlay_array[:,:,i] for i in range(overlay_array.shape[2])]
+        cells_center = self.find_centers(cells_coords)
+        self.save_centers(cells_center, region, path, label, file_name)
 
-        binary_mask = boundries == 255
+
+        # overlay_array = np.array(overlay_image)
+
+        # extract the positive, boundries, negatives from the overlay image
+        # positive, boundries, negatives  = [overlay_array[:,:,i] for i in range(overlay_array.shape[2])]
+
+        
+        return
+        # binary_mask = boundries == 255
         
         # Define the structuring element for dilation (extend by 5 pixels)
         structuring_element = np.ones((11, 11), dtype=bool)  # 5 pixels in each direction + center

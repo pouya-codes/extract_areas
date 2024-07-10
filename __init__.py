@@ -12,6 +12,7 @@ from myparser import parse_args
 from utils import process_annotation, process_mask
 from generate_mask import MaskGenerator
 from patch_extractor import PatchExtractor
+from cell_classifier import CellClassifier
 import pyvips
 import time
 
@@ -28,8 +29,8 @@ class SlideProcessor:
         if not os.path.exists(self.output_path):
             os.makedirs(self.output_path, exist_ok=True)
 
-    def init_annotation_exporter(self, patch_size, positive_annotations_label):
-        self.patch_exporter = PatchExtractor(patch_size, positive_annotations_label)
+    def init_annotation_exporter(self, patch_size, positive_annotations_label, output_path):
+        self.patch_exporter = PatchExtractor(patch_size, positive_annotations_label, output_path, window_size=64)
 
     def init_mask_generator(self, model_path):
         self.mask_generator = MaskGenerator(model_path)
@@ -38,6 +39,9 @@ class SlideProcessor:
     def init_image_processor(self, model_dir, tile_size = 256, overlay_down_sample_rate = 5, post_processing = True, gpu_ids=[]):
         self.image_processor = ImageProcessor(model_dir, tile_size, post_processing, gpu_ids)
         self.overlay_down_sample_rate = overlay_down_sample_rate
+
+    def init_cell_classifier(self, model_path):
+        self.cell_classifier = CellClassifier(model_path)
 
     def open_wsi_slide(self, slide_path):
         try:
@@ -61,7 +65,7 @@ class SlideProcessor:
 
             if os.path.exists(os.path.join(self.output_path, file_name)):
                 print(f"Skipping {file_name} as it already exists in the output path")
-                continue
+                # continue
 
             os.makedirs(os.path.join(self.output_path, file_name), exist_ok=True)
 
@@ -108,6 +112,8 @@ class SlideProcessor:
             os.makedirs(os.path.join(self.output_path, file_name), exist_ok=True)
 
             for label, areas in regions.items():
+                if label == "Other":
+                    continue
                 for area in areas:
                     x, y, width, height, *_ = area if len(area) == 5 else area + [None]
                     region = slide.crop(x, y, width, height)
@@ -122,11 +128,33 @@ class SlideProcessor:
                     if hasattr(self, 'image_processor'):
 
                         region = region.resize((width // self.slide_down_sample_rate, height // self.slide_down_sample_rate))
-                        results, scoring = self.image_processor.test_img(region, eager_mode=True, color_dapi=True, color_marker=True)
+
+                        import time
+                        
+                        start_time = time.time()
+                        
+                        results, scoring = self.image_processor.test_img(
+                            region, 
+                            eager_mode=True, 
+                            color_dapi=True, 
+                            color_marker=True, 
+                            cell_classifier=self.cell_classifier if hasattr(self, 'cell_classifier') else None
+                        )
+                        
+                        end_time = time.time()
+                        execution_time = end_time - start_time
+                        print(f"Execution time: {execution_time} seconds")
+                        # print(cell_coords)
                         overlay_image = results["SegRefined"]
 
                         if hasattr(self, 'patch_exporter'):
-                            self.patch_exporter.export_patches(region, overlay_image, label , area, file_name)
+                            cells_coords = scoring['cell_coords']
+                            self.patch_exporter.export_patches(region, cells_coords, label , area, file_name)
+
+                        if hasattr(self, 'cell_classifier'):
+                            self.cell_classifier 
+
+                            pass
                         
                         if (save_regions):
                             np_array = np.array(overlay_image)
@@ -136,6 +164,7 @@ class SlideProcessor:
                             img_path = os.path.join(self.output_path, file_name, label, f"{x}_{y}_{width}_{height}_overlaid.png")
                             new_img.save(img_path)
                             if scoring is not None:
+                                del scoring['cell_coords']
                                 json_path = os.path.join(self.output_path, file_name, label, f"{x}_{y}_{width}_{height}.json")
                                 with open(json_path, 'w') as f:
                                     json.dump(scoring, f, indent=2)
@@ -176,16 +205,20 @@ def main():
                                args.masks_path, 
                                args.annotations_path,
                                args.slide_down_sample_rate)
-    if args.deepliif is not None:
+    if args.deepliif:
         processor.init_image_processor(args.model_dir, args.tile_size, args.overlay_down_sample_rate, args.post_processing)
 
-    if args.mask_generator is not None:
+    if args.mask_generator:
         processor.init_mask_generator(args.model_path)
 
-    if args.export_positive_annotations is not None:
-        processor.init_annotation_exporter( 32, args.positive_annotations_label)
+    if args.export_positive_annotations:
+        processor.init_annotation_exporter( 32, args.annotation_labels, args.output_path)
 
-    processor.process_slides(save_regions=False)
+    if args.cell_classifier:
+        processor.init_cell_classifier(args.cell_classifier_model)
+        
+
+    processor.process_slides(save_regions=True)
 
 if __name__ == "__main__":
     main()

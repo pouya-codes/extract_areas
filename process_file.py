@@ -31,36 +31,16 @@ class ImageProcessor:
         elif len(gpu_ids) == 0:
             gpu_ids = list(range(number_of_gpus_all))
         print(f'Using GPU {gpu_ids} for inference.')
-        self.opt.gpu_ids = gpu_ids  # overwrite gpu_ids; for test command, default gpu_ids at first is [] which will be translated to a list of all gpus
-        # print_options(self.opt)
+        self.opt.gpu_ids = gpu_ids  
         
 
-    # def test(self, img_path, eager_mode=True, color_dapi=True, color_marker=True):
-    #     img = Image.open(img_path).convert('RGB')
-    #     images, scoring = infer_modalities(img, self.tile_size, self.model_dir, eager_mode, color_dapi, color_marker, self.opt)
-    #     filename = os.path.basename(img_path)
-    #     results = {}
-    #     for name, i in images.items():
-    #         results[name] = i
-    #     return results
-            # i.save(os.path.join(
-            #     self.output_dir,
-            #     filename.replace('.' + filename.split('.')[-1], f'_{name}.png')
-            # ))
-
-        # if scoring is not None:
-        #     with open(os.path.join(
-        #             self.output_dir,
-        #             filename.replace('.' + filename.split('.')[-1], f'.json')
-        #     ), 'w') as f:
-        #         json.dump(scoring, f, indent=2)
         
-    def test_img(self, img, eager_mode=False, color_dapi=False, color_marker=False):
+    def test_img(self, img, eager_mode=False, color_dapi=False, color_marker=False, cell_classifier = None):
         img = img.convert('RGB')
-        images, scoring = infer_modalities(img, self.tile_size, self.model_dir, eager_mode, color_dapi, color_marker, self.opt)
-        if (self.post_processing):
+        images, scoring = infer_modalities(img, self.tile_size, self.model_dir, eager_mode, color_dapi, color_marker, self.opt, cell_classifier)
+        # if (self.post_processing):
             # https://github.com/nadeemlab/DeepLIIF?tab=readme-ov-file#cloud-api-endpoints
-            images, scoring = postprocess(img, images, self.tile_size, 'DeepLIIF', seg_thresh=150, size_thresh='auto', marker_thresh='auto', size_thresh_upper=None)
+            # images, scoring = postprocess(img, images, self.tile_size, 'DeepLIIF', seg_thresh=150, size_thresh='auto', marker_thresh='auto', size_thresh_upper=None)
         results = {}
         for name, i in images.items():
             results[name] = i

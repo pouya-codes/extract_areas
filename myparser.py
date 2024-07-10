@@ -22,7 +22,10 @@ def parse_args():
 
     # Export areas of positive annotations
     parser.add_argument("--export_positive_annotations", action='store_true', help="Export areas of positive annotations")
-    parser.add_argument("--positive_annotations_label", type=str, help="Lable the positive annotations in the annotation file")
+    parser.add_argument("--annotation_labels", type=str, nargs='+', help="The lable of the annotations to be exported")
+
+    parser.add_argument("--cell_classifier", action='store_true', help="Apply cell classifier on the extracted cells")
+    parser.add_argument("--cell_classifier_model", type=str, help="Path to the cell classifier model")
 
     return parser.parse_args()
 
