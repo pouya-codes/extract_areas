@@ -3,6 +3,7 @@ from torchvision import transforms, models
 from PIL import Image
 import numpy as np
 import os
+import torch.nn.functional as F
 
 class CellClassifier:
     def __init__(self, model_path, device=None):
@@ -60,9 +61,13 @@ class CellClassifier:
 
         with torch.no_grad():
             outputs = self.model(image)
+            probabilities = F.softmax(outputs, dim=1)
             _, predicted = torch.max(outputs, 1)
 
-        return predicted.item()
+        predicted_label = predicted.item()
+        predicted_probability = probabilities[0, predicted_label].item()
+        
+        return predicted_label, predicted_probability
     
     
     def process_window(self, image, coords):
@@ -85,5 +90,4 @@ class CellClassifier:
         #     padded_image[:cropped_image.shape[0], :cropped_image.shape[1], :] = cropped_image
         #     cropped_image = padded_image
 
-        predicted_class = self.predict_single(cropped_image)
-        return predicted_class
+        return self.predict_single(cropped_image)

@@ -112,8 +112,8 @@ class SlideProcessor:
             os.makedirs(os.path.join(self.output_path, file_name), exist_ok=True)
 
             for label, areas in regions.items():
-                if label == "Other":
-                    continue
+                # if label == "Other" or label == "Stroma":
+                    # continue
                 for area in areas:
                     x, y, width, height, *_ = area if len(area) == 5 else area + [None]
                     region = slide.crop(x, y, width, height)
@@ -218,7 +218,7 @@ def main():
         processor.init_cell_classifier(args.cell_classifier_model)
         
 
-    processor.process_slides(save_regions=True)
+    processor.process_slides(save_regions=False)
 
 if __name__ == "__main__":
     main()
