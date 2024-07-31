@@ -144,9 +144,6 @@ class PatchExtractor:
         if np.any(path.contains_points(points)):
             # Save the image if any of the extended pixels are within the path
             Image.fromarray(extended_image).save(output_path)
-            print(f"Image saved to {output_path}")
-        else:
-            print("No extended pixels within the path")
 
         # extend_boundries = self.extend_pixels(boundries)
 

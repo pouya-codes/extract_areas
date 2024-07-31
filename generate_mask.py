@@ -6,6 +6,7 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.spatial import distance
+from collections import Counter
 if torch.cuda.is_available():
     print("CUDA is available")
 
@@ -45,16 +46,39 @@ class MaskGenerator:
         # If the standard deviation is small, the distances are approximately equal
         is_circle = np.std(distances) < tolerance  # Set tolerance as needed
         return is_circle
+    
+    def estimate_background_color(self, img):
+        # Reshape the image to a list of pixels
+        pixels = img.reshape(-1, img.shape[-1])
+        # Count the frequency of each color
+        color_counts = Counter(map(tuple, pixels))
+        # Get the most common color
+        background_color = color_counts.most_common(1)[0][0]
+        return np.array(background_color)
 
-    def process_masks(self, img, masks, median_ratio=0.6):
+    def process_masks(self, img, masks, median_ratio=0.5, edge_margin=5, variance_threshold=80):
         if len(masks) == 0:
             return
         areas_median = np.median([mask['area'] for mask in masks])
         final_mask = np.zeros((img.shape[0], img.shape[1]))
+        img_height, img_width = img.shape[:2]
+
+        # background_color = self.estimate_background_color(img)
+
         for mask in masks:
-            if abs(mask['area'] - areas_median) < areas_median * median_ratio: # and self.is_circle(mask):
-            # if mask['area'] > 20000 and mask['area'] < 500000:
-                final_mask[np.where(mask['segmentation']!=0)] = 255
+            x, y, w, h = map(int, mask['bbox'])
+            if (x > edge_margin and y > edge_margin and 
+                x + w < img_width - edge_margin and 
+                y + h < img_height - edge_margin and 
+                abs(mask['area'] - areas_median) < areas_median * median_ratio and self.is_circle(mask)):
+                    roi = img[y:y+h, x:x+w]
+                    # avg_color = np.mean(roi, axis=(0, 1))
+                    variance = np.var(roi)
+
+                    # if not np.allclose(avg_color, background_color, atol=300):
+                    if variance > variance_threshold:
+                    # if mask['area'] > 20000 and mask['area'] < 500000:
+                        final_mask[np.where(mask['segmentation']!=0)] = 255
         return final_mask
         
 

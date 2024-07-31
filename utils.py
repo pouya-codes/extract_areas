@@ -37,5 +37,13 @@ def process_mask(mask_path, slide_dimensions):
         # Apply the ratios to the coordinates and dimensions
         x, y, width, height = x * mask_ratio_width, y * mask_ratio_height, width * mask_ratio_width, height * mask_ratio_height
         region = [round(x), round(y), round(width), round(height)]
+        # regions['Mask'].append(region)
+
+        # Create a matplotlib.path.Path from the contour
+        contour = contour.reshape(-1, 2)
+        contour[:, 0] = contour[:, 0] * mask_ratio_width
+        contour[:, 1] = contour[:, 1] * mask_ratio_height
+        path = Path(contour)
+        region.append(path)
         regions['Mask'].append(region)
     return regions

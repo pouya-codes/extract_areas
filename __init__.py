@@ -15,6 +15,7 @@ from patch_extractor import PatchExtractor
 from cell_classifier import CellClassifier
 import pyvips
 import time
+from tqdm import tqdm
 
 class SlideProcessor:
     def __init__(self, slides_path, output_path, masks_path = "", annotations_path = "", slide_down_sample_rate = 5):
@@ -110,11 +111,12 @@ class SlideProcessor:
             regions["Mask"] = regions.get("Mask", [])
             
             os.makedirs(os.path.join(self.output_path, file_name), exist_ok=True)
-
             for label, areas in regions.items():
+                print(f"Processing {label} areas")
                 # if label == "Other" or label == "Stroma":
                     # continue
-                for area in areas:
+                for area in tqdm(areas):
+                    # print(f"Processing {label} area {area}")
                     x, y, width, height, *_ = area if len(area) == 5 else area + [None]
                     region = slide.crop(x, y, width, height)
                     region = Image.fromarray(region.numpy())
@@ -126,35 +128,37 @@ class SlideProcessor:
                         region.save(img_path)
                     # continue
                     if hasattr(self, 'image_processor'):
+                        
 
                         region = region.resize((width // self.slide_down_sample_rate, height // self.slide_down_sample_rate))
 
-                        import time
+                        
                         
                         start_time = time.time()
-                        
-                        results, scoring = self.image_processor.test_img(
-                            region, 
-                            eager_mode=True, 
-                            color_dapi=True, 
-                            color_marker=True, 
-                            cell_classifier=self.cell_classifier if hasattr(self, 'cell_classifier') else None
-                        )
-                        
-                        end_time = time.time()
-                        execution_time = end_time - start_time
-                        print(f"Execution time: {execution_time} seconds")
-                        # print(cell_coords)
-                        overlay_image = results["SegRefined"]
+                        if False:
+                                
+                            results, scoring = self.image_processor.test_img(
+                                region, 
+                                eager_mode=True, 
+                                color_dapi=True, 
+                                color_marker=True, 
+                                cell_classifier=self.cell_classifier if hasattr(self, 'cell_classifier') else None
+                            )
+                            
+                            end_time = time.time()
+                            execution_time = end_time - start_time
+                            print(f"Execution time: {execution_time} seconds")
+                            # print(cell_coords)
+                            overlay_image = results["SegRefined"]
 
-                        if hasattr(self, 'patch_exporter'):
-                            cells_coords = scoring['cell_coords']
-                            self.patch_exporter.export_patches(region, cells_coords, label , area, file_name)
+                            if hasattr(self, 'patch_exporter'):
+                                cells_coords = scoring['cell_coords']
+                                self.patch_exporter.export_patches(region, cells_coords, label , area, file_name)
 
                         if hasattr(self, 'cell_classifier'):
-                            self.cell_classifier 
+                            overlay_image = self.cell_classifier.process_image_with_sliding_window_batch(region, area)
+                        
 
-                            pass
                         
                         if (save_regions):
                             np_array = np.array(overlay_image)
@@ -163,11 +167,13 @@ class SlideProcessor:
                             new_img = Image.blend(background, overlay, 0.25)
                             img_path = os.path.join(self.output_path, file_name, label, f"{x}_{y}_{width}_{height}_overlaid.png")
                             new_img.save(img_path)
-                            if scoring is not None:
-                                del scoring['cell_coords']
-                                json_path = os.path.join(self.output_path, file_name, label, f"{x}_{y}_{width}_{height}.json")
-                                with open(json_path, 'w') as f:
-                                    json.dump(scoring, f, indent=2)
+
+                            if False:
+                                if scoring is not None:
+                                    del scoring['cell_coords']
+                                    json_path = os.path.join(self.output_path, file_name, label, f"{x}_{y}_{width}_{height}.json")
+                                    with open(json_path, 'w') as f:
+                                        json.dump(scoring, f, indent=2)
 
 
                         x, y, width, height = ( x // self.overlay_down_sample_rate,

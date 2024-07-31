@@ -27,5 +27,8 @@ def parse_args():
     parser.add_argument("--cell_classifier", action='store_true', help="Apply cell classifier on the extracted cells")
     parser.add_argument("--cell_classifier_model", type=str, help="Path to the cell classifier model")
 
+    # Add required staining argument
+    # parser.add_argument("--staining", type=str, choices=['nuclear', 'membrane', 'cytoplasm'], help="Type of staining", required=True)
+
     return parser.parse_args()
 
