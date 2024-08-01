@@ -7,7 +7,6 @@ from torchvision.models import resnet50, ResNet50_Weights
 from torchvision import transforms
 from PIL import Image
 import numpy as np
-import os
 import torch.nn.functional as F
 import cv2
 
@@ -127,12 +126,28 @@ class CellClassifier:
 
         overlay = cv2.applyColorMap(np.uint8(255 * heatmap), cv2.COLORMAP_JET)
         overlay = cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB)
-        # Write the voting array on the overlay image
-        for i, vote in enumerate(voting):
-            text = f"Class {i}: {int(vote)}"
-            cv2.putText(overlay, text, (50, 100 + i * 100), cv2.FONT_HERSHEY_SIMPLEX, 4, (255, 255, 255), 2, cv2.LINE_AA)
-        return Image.fromarray(overlay)
 
+        return Image.fromarray(overlay), self._create_json(voting)
+
+    def _create_json(self, voting):
+    # Create the JSON object
+        num_total = int(voting.sum())
+        num_pos = int(voting[1])
+        num_neg = int(voting[0])
+        percent_pos = round((num_pos / num_total) * 100, 1) if num_total > 0 else 0.0
+        result = {
+            "num_total": num_total,
+            "num_pos": num_pos,
+            "num_neg": num_neg,
+            "percent_pos": percent_pos,
+            "prob_thresh": self.classifier_threshold,
+            "size_thresh": None,
+            "size_thresh_upper": None,
+            "marker_thresh": None,
+            "cell_coords": []
+        }
+        return result
+    
     def process_window(self, image, coords):
         coordinates_array = np.array(coords)
         # Calculate the mean along the vertical axis for this set of coordinates

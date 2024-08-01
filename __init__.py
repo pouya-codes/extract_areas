@@ -53,7 +53,7 @@ class SlideProcessor:
             print(f"Cannot open {slide_path}\nError: {e}")
             return None
 
-    def process_slides(self, save_regions = False):
+    def process_slides(self, staining, save_regions = False):
         slides = [slide for ext in self.extensions for slide in glob.glob(os.path.join(self.slides_path, ext))]
         for slide_path in slides:
             print(f"Processing {slide_path}")
@@ -124,40 +124,35 @@ class SlideProcessor:
                     if (save_regions):
                         os.makedirs(os.path.join(self.output_path, file_name, label), exist_ok=True)
                         img_path = os.path.join(self.output_path, file_name, label, f"{x}_{y}_{width}_{height}.png")
-                        # region.write_to_file(img_path)
                         region.save(img_path)
-                    # continue
-                    if hasattr(self, 'image_processor'):
-                        
 
+                    if hasattr(self, 'image_processor'):                      
                         region = region.resize((width // self.slide_down_sample_rate, height // self.slide_down_sample_rate))
-
-                        
-                        
-                        start_time = time.time()
-                        if False:
-                                
+                        if staining in ['nuclear', 'cytoplasm']:
                             results, scoring = self.image_processor.test_img(
                                 region, 
                                 eager_mode=True, 
                                 color_dapi=True, 
                                 color_marker=True, 
-                                cell_classifier=self.cell_classifier if hasattr(self, 'cell_classifier') else None
-                            )
-                            
-                            end_time = time.time()
-                            execution_time = end_time - start_time
-                            print(f"Execution time: {execution_time} seconds")
-                            # print(cell_coords)
+                                cell_classifier=self.cell_classifier if (hasattr(self, 'cell_classifier') and staining == 'cytoplasm') else None
+                            )                           
                             overlay_image = results["SegRefined"]
 
                             if hasattr(self, 'patch_exporter'):
                                 cells_coords = scoring['cell_coords']
                                 self.patch_exporter.export_patches(region, cells_coords, label , area, file_name)
-
-                        if hasattr(self, 'cell_classifier'):
-                            overlay_image = self.cell_classifier.process_image_with_sliding_window_batch(region, area)
+                        elif staining == 'membrane':
+                            if hasattr(self, 'cell_classifier'):
+                                overlay_image, scoring = self.cell_classifier.process_image_with_sliding_window_batch(region, area)
+                            else:
+                                print("Cell classifier not found. Skipping...")
+                                continue
                         
+                        if scoring is not None:
+                            overlay = np.array(overlay_image)    
+                            cv2.putText(overlay, f"Pos: {scoring['num_pos']}", (50, 200), cv2.FONT_HERSHEY_SIMPLEX, 4, (255, 255, 255), 2, cv2.LINE_AA)
+                            cv2.putText(overlay, f"Neg: {scoring['num_neg']}", (50, 300), cv2.FONT_HERSHEY_SIMPLEX, 4, (255, 255, 255), 2, cv2.LINE_AA)
+                            overlay_image = Image.fromarray(overlay)
 
                         
                         if (save_regions):
@@ -168,12 +163,11 @@ class SlideProcessor:
                             img_path = os.path.join(self.output_path, file_name, label, f"{x}_{y}_{width}_{height}_overlaid.png")
                             new_img.save(img_path)
 
-                            if False:
-                                if scoring is not None:
-                                    del scoring['cell_coords']
-                                    json_path = os.path.join(self.output_path, file_name, label, f"{x}_{y}_{width}_{height}.json")
-                                    with open(json_path, 'w') as f:
-                                        json.dump(scoring, f, indent=2)
+                            if scoring is not None:
+                                del scoring['cell_coords']
+                                json_path = os.path.join(self.output_path, file_name, label, f"{x}_{y}_{width}_{height}.json")
+                                with open(json_path, 'w') as f:
+                                    json.dump(scoring, f, indent=2)
 
 
                         x, y, width, height = ( x // self.overlay_down_sample_rate,
@@ -224,7 +218,7 @@ def main():
         processor.init_cell_classifier(args.cell_classifier_model)
         
 
-    processor.process_slides(save_regions=False)
+    processor.process_slides(args.staining, save_regions=False)
 
 if __name__ == "__main__":
     main()

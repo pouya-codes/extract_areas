@@ -56,7 +56,7 @@ class MaskGenerator:
         background_color = color_counts.most_common(1)[0][0]
         return np.array(background_color)
 
-    def process_masks(self, img, masks, median_ratio=0.5, edge_margin=5, variance_threshold=80):
+    def process_masks(self, img, masks, median_ratio=0.7, edge_margin=5, variance_threshold=80):
         if len(masks) == 0:
             return
         areas_median = np.median([mask['area'] for mask in masks])
