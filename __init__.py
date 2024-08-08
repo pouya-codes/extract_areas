@@ -1,7 +1,7 @@
 import glob, os
-OPENSLIDE_PATH = r'D:/Develop/UBC/openslide/bin'
-os.add_dll_directory(OPENSLIDE_PATH)
-import openslide
+# OPENSLIDE_PATH = r'D:/Develop/UBC/openslide/bin'
+# os.add_dll_directory(OPENSLIDE_PATH)
+# import openslide
 import cv2
 import json
 from PIL import Image
