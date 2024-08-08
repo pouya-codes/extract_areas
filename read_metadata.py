@@ -33,7 +33,7 @@ class ReadMetadataReader:
                     metadata[slide][core_number] = row[slide]
                 else:
                     metadata[slide][core_number] = row[int(slide)]
-        print(metadata)
+        # print(metadata)
         return metadata
     
     def _extract_numerical_part(self, slide_name):

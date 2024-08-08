@@ -121,22 +121,24 @@ class SlideProcessor:
                 continue
 
             # regions["Mask"] = regions.get("Mask", [])
+            qupath_exists = any(key.startswith('QuPath') for key in regions.keys())
+        
+            if qupath_exists and hasattr(self, 'metadata_reader'):
+                if self.metadata_reader.get_number_of_cores() != len(regions.items()):
+                    print(f"Warning: Number of cores in metadata {self.metadata_reader.get_number_of_cores()} does not match number of regions {len(regions.items())}")
+                    continue
+                if not self.metadata_reader.check_slide_exists(file_name):
+                    print(f"Warning: Slide {file_name} not found in metadata")
+                    continue
             
             os.makedirs(os.path.join(self.output_path, file_name), exist_ok=True)
 
-            for label, areas in regions.items():
-                print(f"Processing {label} areas")
+            for label, areas in (regions.items() if not qupath_exists else tqdm(regions.items())):
+                # print(f"Processing {label} areas")
 
-                if 'QuPath' in label and hasattr(self, 'metadata_reader'):
-                    if self.metadata_reader.get_number_of_cores() != len(regions.items()):
-                        print(f"Warning: Number of cores in metadata {self.metadata_reader.get_number_of_cores()} does not match number of regions {len(regions.items())}")
-                        continue
-                    if not self.metadata_reader.check_slide_exists(file_name):
-                        print(f"Warning: Slide {file_name} not found in metadata")
-                        continue
                 # if label == "Other" or label == "Stroma":
                     # continue
-                for area in tqdm(areas):
+                for area in (areas if qupath_exists else tqdm(areas)):
                     # print(f"Processing {label} area {area}")
                     x, y, width, height, *_ = area if len(area) == 5 else area + [None]
                     region = slide.crop(x, y, width, height)
