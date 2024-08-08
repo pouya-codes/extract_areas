@@ -5,6 +5,7 @@ def parse_args():
     parser.add_argument("--slides_path", type=str, help="Path to the WSI slides location", required=True)
     parser.add_argument("--masks_path", type=str, help="Path to the HistoQC masks location", required=False)
     parser.add_argument("--annotations_path", type=str, help="Path to the slides' annotation.", required=False)
+    parser.add_argument("--qupath_dearray_paths", type=str, help="Path to the text files contain qupath dearray info", required=False)
     parser.add_argument("--output_path", type=str, help="Path to the output location", required=True)
     parser.add_argument("--slide_down_sample_rate", type=int, help="the rate of down sampling the extracted regions", default=5)
     parser.add_argument("--overlay_down_sample_rate", type=int, help="the rate of down sampling to generated overlay", default=5)
@@ -29,6 +30,10 @@ def parse_args():
 
     # Add required staining argument
     parser.add_argument("--staining", type=str, choices=['nuclear', 'membrane', 'cytoplasm'], help="Type of staining", required=True)
+
+    # Add metadata argument
+    parser.add_argument("--metadata", type=str, help="Path to the excel metadata file", required=False)
+    parser.add_argument("--metadata_sheet", type=str, help="Name of the sheet to read from the metadata file", required=False, default=None)
 
     return parser.parse_args()
 

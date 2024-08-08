@@ -1,6 +1,7 @@
 import pandas as pd
+import re
 
-class ReadMetadata:
+class ReadMetadataReader:
     def __init__(self, file_path, sheet_name=None):
         """
         Initialize the ReadMetadata class with the path to the Excel file and optional sheet name.
@@ -35,6 +36,18 @@ class ReadMetadata:
         print(metadata)
         return metadata
     
+    def _extract_numerical_part(self, slide_name):
+        """
+        Extracts and returns the numerical part of the slide name.
+
+        Args:
+            slide_name (str): The original slide name.
+
+        Returns:
+            str: The numerical part of the slide name.
+        """
+        numerical_parts = re.findall(r'\d+', slide_name)
+        return ''.join(numerical_parts)
 
     def get_metadata(self, slide_name, core_number):
         """
@@ -44,7 +57,16 @@ class ReadMetadata:
         :param core_number: The core number for which metadata is to be retrieved.
         :return: Metadata for the specified slide name and core number.
         """
-        return self.metadata.get(slide_name, {}).get(core_number, None)
+        return self.metadata.get(self._extract_numerical_part(slide_name), {}).get(core_number, None)
+
+    def check_slide_exists(self, slide_name):
+        """
+        Check if metadata is available for a given slide name.
+        
+        :param slide_name: The slide name to be checked.
+        :return: True if metadata is available for the specified slide name, False otherwise.
+        """
+        return self._extract_numerical_part(slide_name) in self.metadata
     
     def get_number_of_cores(self):
         """
@@ -55,7 +77,7 @@ class ReadMetadata:
         return len(next(iter(self.metadata.values())))
 
 # Example usage:
-metadata_reader = ReadMetadata('CPQA.xlsx', 'BRAFV600E assessments')
-slide_metadata = metadata_reader.get_metadata('240', '1')
-print(metadata_reader.get_number_of_cores())    
-print(slide_metadata)
+# metadata_reader = ReadMetadataReader('CPQA.xlsx', 'BRAFV600E assessments')
+# slide_metadata = metadata_reader.get_metadata('240', '1')
+# print(metadata_reader.get_number_of_cores())    
+# print(slide_metadata)
