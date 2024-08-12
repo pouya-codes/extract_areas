@@ -191,12 +191,13 @@ def process_qupath_dearray(qupath_dearray_path, pyvips_slide, tmaspot_size=3200)
         _, _, _, _, label, missing, x, y=row
         label = label_map[label]
         if(not strtobool(missing)):
-            x = int((float(x)*ratio_x) + bounds_x)
-            y = int((float(y)*ratio_y) + bounds_y)
+            radius = tmaspot_size * 0.5
+            x = int((float(x)*ratio_x) + bounds_x - radius)
+            y = int((float(y)*ratio_y) + bounds_y - radius)
             w = tmaspot_size
             h = tmaspot_size
             center = (x, y)
-            radius = tmaspot_size * 0.5
+            
             # Create the Path object for a circle
             path = mpath.Path.arc(0, 360)
             # Scale and translate the path to the desired center and radius

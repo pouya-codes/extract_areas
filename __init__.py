@@ -1,7 +1,7 @@
-import glob, os
-OPENSLIDE_PATH = r'D:/Develop/UBC/openslide/bin'
-os.add_dll_directory(OPENSLIDE_PATH)
-import openslide
+import glob, os, gc
+# OPENSLIDE_PATH = r'D:/Develop/UBC/openslide/bin'
+# os.add_dll_directory(OPENSLIDE_PATH)
+# import openslide
 import cv2
 import json
 from PIL import Image
@@ -122,14 +122,14 @@ class SlideProcessor:
 
             # regions["Mask"] = regions.get("Mask", [])
             qupath_exists = any(key.startswith('QuPath') for key in regions.keys())
-        
+            
             if qupath_exists and hasattr(self, 'metadata_reader'):
                 if self.metadata_reader.get_number_of_cores() != len(regions.items()):
                     print(f"Warning: Number of cores in metadata {self.metadata_reader.get_number_of_cores()} does not match number of regions {len(regions.items())}")
-                    continue
+                    # continue
                 if not self.metadata_reader.check_slide_exists(file_name):
                     print(f"Warning: Slide {file_name} not found in metadata")
-                    continue
+                    # continue
             
             os.makedirs(os.path.join(self.output_path, file_name), exist_ok=True)
 
@@ -164,6 +164,8 @@ class SlideProcessor:
                             if hasattr(self, 'patch_exporter'):
                                 cells_coords = scoring['cell_coords']
                                 self.patch_exporter.export_patches(region, cells_coords, label , area, file_name)
+                            else:
+                                del scoring['cell_coords']  
                         elif staining == 'membrane':
                             if hasattr(self, 'cell_classifier'):
                                 overlay_image, scoring = self.cell_classifier.process_image_with_sliding_window_batch(region, area)
@@ -175,7 +177,7 @@ class SlideProcessor:
                             overlay = np.array(overlay_image)    
                             cv2.putText(overlay, f"Pos: {scoring['num_pos']}", (50, 200), cv2.FONT_HERSHEY_SIMPLEX, 4, (255, 255, 255), 2, cv2.LINE_AA)
                             cv2.putText(overlay, f"Neg: {scoring['num_neg']}", (50, 300), cv2.FONT_HERSHEY_SIMPLEX, 4, (255, 255, 255), 2, cv2.LINE_AA)
-                            if 'QuPath' in label and hasattr(self, 'metadata_reader'):
+                            if 'QuPath' in label and hasattr(self, 'metadata_reader') and self.metadata_reader.get_number_of_cores() == len(regions.items()):
                                 core_number = label.split(',')[1]
                                 metadata = self.metadata_reader.get_metadata(file_name, core_number)
                                 if metadata is not None:
@@ -218,11 +220,18 @@ class SlideProcessor:
                             offset_width = region_width - heat_map.shape[1]
                             
                         heat_map[y:region_height, x:region_width, :] = np_array[:region_y-offset_height, :region_x-offset_width, :]
+                gc.collect()
 
 
             if hasattr(self, 'image_processor'):
+                if hasattr(self, 'metadata_reader') and self.metadata_reader.get_number_of_cores() != len(regions.items()):
+                    text = self.metadata_reader.get_metadata_string(file_name)
+                    for idx, line in enumerate(text.split('\n')):
+                        cv2.putText(heat_map, line, (40, 20 + (idx * 20)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2, cv2.LINE_AA)                       
                 final_heat_map = Image.fromarray(heat_map)
                 os.makedirs(os.path.join(self.output_path, file_name), exist_ok=True)
+                
+
                 final_heat_map.save(os.path.join(self.output_path, file_name, f"{file_name}.png"))
 
 

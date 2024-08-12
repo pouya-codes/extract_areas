@@ -75,6 +75,34 @@ class ReadMetadataReader:
         :return: Number of cores.
         """
         return len(next(iter(self.metadata.values())))
+    
+    def get_metadata_string(self, slide_name):
+        """
+        Retrieve and format metadata for a given slide name.
+        
+        :param slide_name: The slide name for which metadata is to be retrieved.
+        :return: Formatted metadata string for the specified slide name.
+        """
+        numerical_part = self._extract_numerical_part(slide_name)
+        slide_metadata = self.metadata.get(numerical_part, {})
+
+        if not slide_metadata:
+            return "No metadata available for the given slide name."
+
+        metadata_strings = []
+        cores = list(slide_metadata.items())
+
+        for i in range(0, len(cores), 2):
+            core1 = cores[i]
+            core2 = cores[i + 1] if i + 1 < len(cores) else None
+
+            if core2:
+                metadata_strings.append(f"Core {core1[0]}: {core1[1]}, Core {core2[0]}: {core2[1]}")
+            else:
+                metadata_strings.append(f"Core {core1[0]}: {core1[1]}")
+
+        return "\n".join(metadata_strings)
+
 
 # Example usage:
 # metadata_reader = ReadMetadataReader('CPQA.xlsx', 'BRAFV600E assessments')
