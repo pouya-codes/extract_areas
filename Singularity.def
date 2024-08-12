@@ -5,23 +5,21 @@ From: continuumio/miniconda3
     environment.yaml /environment.yaml
 
 %post
-    # install gcc
-    apt-get update && apt-get -y install build-essential gcc ffmpeg libsm6 libxext6 python3-setuptools libvips
-    # Update conda
+    apt-get update && apt-get -y install build-essential gcc ffmpeg libsm6 libxext6 python3-setuptools libvips openjdk-17-jdk
     conda update -n base -c defaults conda -y
+    /opt/conda/bin/conda env create -f environment.yaml
 
-    # Create the environment from the environment.yaml file
-    conda env create -f /environment.yaml
-
-    # Clean up
-    conda clean -a -y
-    pip install --upgrade torch torchvision
+    # conda env create -f /environment.yaml
+    # echo -e "\nconda activate deepliif_env" >> ~/.bashrc
+   
+    # conda activate deepliif_env
+    /opt/conda/envs/deepliif_env/bin/pip install --upgrade torch torchvision
+    # conda clean -a
 
 %environment
     # Activate the environment
-    source activate deepliif_env
+    # conda activate deepliif_env
 
 %runscript
     # This is the default command when the container is run
-    conda activate deepliif_env
-    exec "$@"
+    exec /opt/conda/envs/deepliif_env/bin/"$@"
