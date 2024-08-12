@@ -4,6 +4,7 @@ __pycache__/
 DeepLIIF
 .vscode/
 models/
+*.sif
 bcpark*.py
 ~$*
 bunzenlake.py
