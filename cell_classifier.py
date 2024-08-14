@@ -9,6 +9,7 @@ from PIL import Image
 import numpy as np
 import torch.nn.functional as F
 import cv2
+import gc
 
 class CellClassifier:
     def __init__(self, model_path, device=None, patch_size=64, batch_size=32, classifier_threshold=0.5, generate_gradcam=False):
@@ -26,8 +27,9 @@ class CellClassifier:
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ])
         self.model = self._create_model()
-        self.gradient_cam = GradCAM(model=self.model, target_layers=[self.model.layer4[-1]])
-        self.gradient_cam.batch_size = self.batch_size
+        if (self.generate_gradcam):
+            self.gradient_cam = GradCAM(model=self.model, target_layers=[self.model.layer4[-1]])
+            self.gradient_cam.batch_size = self.batch_size
         self._load_model_weights()
         
 
@@ -53,10 +55,9 @@ class CellClassifier:
             outputs = self.model(image)
             probabilities = F.softmax(outputs, dim=1)
             _, predicted = torch.max(outputs, 1)
-
+        
         predicted_label = predicted.item()
         predicted_probability = probabilities[0, predicted_label].item()
-        
         return predicted_label, predicted_probability
     
     def _process_patches(self, patches, positions, heatmap, width, height):
@@ -162,7 +163,6 @@ class CellClassifier:
         x_max = int(min(image.shape[1], x + half_size))
         
         cropped_image = image[y_min:y_max, x_min:x_max]
-
         # # Ensure the cropped image is 64x64
         # if cropped_image.shape[0] != 64 or cropped_image.shape[1] != 64:
         #     padded_image = np.zeros((64, 64, 3), dtype=np.uint8)

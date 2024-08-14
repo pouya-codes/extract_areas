@@ -43,8 +43,8 @@ class SlideProcessor:
         self.image_processor = ImageProcessor(model_dir, tile_size, post_processing, gpu_ids)
         self.overlay_down_sample_rate = overlay_down_sample_rate
 
-    def init_cell_classifier(self, model_path):
-        self.cell_classifier = CellClassifier(model_path)
+    def init_cell_classifier(self, model_path, staining):
+        self.cell_classifier = CellClassifier(model_path, generate_gradcam = True if staining == 'membrane' else False) # generate gradcam if membrane staining
 
     def open_wsi_slide(self, slide_path):
         try:
@@ -119,7 +119,7 @@ class SlideProcessor:
    
             if regions is None: # If no regions are found
                 continue
-
+            
             # regions["Mask"] = regions.get("Mask", [])
             qupath_exists = any(key.startswith('QuPath') for key in regions.keys())
             
@@ -255,7 +255,7 @@ def main():
         processor.init_annotation_exporter( 32, args.annotation_labels, args.output_path)
 
     if args.cell_classifier:
-        processor.init_cell_classifier(args.cell_classifier_model)
+        processor.init_cell_classifier(args.cell_classifier_model, args.staining)
 
     if args.metadata:
         processor.init_metadata(args.metadata, args.metadata_sheet)
