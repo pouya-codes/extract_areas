@@ -129,7 +129,7 @@ class SlideProcessor:
                     # continue
                 if not self.metadata_reader.check_slide_exists(file_name):
                     print(f"Warning: Slide {file_name} not found in metadata")
-                    # continue
+                    continue
             
             os.makedirs(os.path.join(self.output_path, file_name), exist_ok=True)
 

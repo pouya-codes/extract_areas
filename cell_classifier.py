@@ -9,7 +9,6 @@ from PIL import Image
 import numpy as np
 import torch.nn.functional as F
 import cv2
-import gc
 
 class CellClassifier:
     def __init__(self, model_path, device=None, patch_size=64, batch_size=32, classifier_threshold=0.5, generate_gradcam=False):
