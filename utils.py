@@ -196,7 +196,7 @@ def process_qupath_dearray(qupath_dearray_path, pyvips_slide, tmaspot_size=3200)
             y = int((float(y)*ratio_y) + bounds_y - radius)
             w = tmaspot_size
             h = tmaspot_size
-            center = (x, y)
+            center = (x + radius, y + radius)
             
             # Create the Path object for a circle
             path = mpath.Path.arc(0, 360)
