@@ -115,7 +115,7 @@ class SlideProcessor:
 
             if has_dearray:
                 dearray_path = dearray_path[0]
-                regions = process_qupath_dearray(dearray_path, slide)
+                regions = process_qupath_dearray(dearray_path, slide, 5000)
    
             if regions is None: # If no regions are found
                 continue
@@ -194,7 +194,8 @@ class SlideProcessor:
                             new_img.save(img_path)
 
                             if scoring is not None:
-                                del scoring['cell_coords']
+                                if 'cell_coords' in scoring:
+                                    del scoring['cell_coords']
                                 json_path = os.path.join(self.output_path, file_name, label, f"{x}_{y}_{width}_{height}.json")
                                 with open(json_path, 'w') as f:
                                     json.dump(scoring, f, indent=2)

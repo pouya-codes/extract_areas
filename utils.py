@@ -161,7 +161,7 @@ def map_labels_to_indices(dataset):
     letters = set()
     numbers = set()
     for row in dataset:
-        _, _, _, _, label, missing, _, _=row
+        label, missing=row[-4:-2]
         if bool(missing) == False:
             print(f'The spot {label} is missing, skipping!')
         else:
@@ -188,7 +188,7 @@ def process_qupath_dearray(qupath_dearray_path, pyvips_slide, tmaspot_size=3200)
     label_map = map_labels_to_indices(dataset)
     regions = {}
     for row in dataset:
-        _, _, _, _, label, missing, x, y=row
+        label, missing, x, y = row[-4:]
         label = label_map[label]
         if(not strtobool(missing)):
             radius = tmaspot_size * 0.5
