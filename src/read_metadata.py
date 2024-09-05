@@ -2,7 +2,7 @@ import pandas as pd
 import re
 
 class ReadMetadataReader:
-    def __init__(self, file_path, sheet_name=None):
+    def __init__(self, file_path, sheet_name=None, dearry_map_file= None):
         """
         Initialize the ReadMetadata class with the path to the Excel file and optional sheet name.
         
@@ -11,30 +11,43 @@ class ReadMetadataReader:
         """
         self.file_path = file_path
         self.sheet_name = sheet_name
-        self.metadata = self._read_excel()
+        self.dearry_map_file = dearry_map_file
+        self._init()
 
-    def _read_excel(self):
+    def _init(self):
         """
         Read the Excel file and store the metadata in a dictionary.
         
         :return: Dictionary with slide names as keys and corresponding core labels as values.
         """
-        df = pd.read_excel(self.file_path, sheet_name=self.sheet_name)
-        metadata = {}
-        
-        # Assuming the first row contains the slide names and the first column contains the core numbers
-        slide_names = df.columns[1:-2]
-        for slide in slide_names:
-            slide = str(slide)  # Ensure slide name is a string
-            metadata[slide] = {}
-            for index, row in df.iterrows():
-                core_number = str(row.iloc[0])  # Ensure core number is a string
-                if slide in row:
-                    metadata[slide][core_number] = row[slide]
-                else:
-                    metadata[slide][core_number] = row[int(slide)]
-        # print(metadata)
-        return metadata
+        if self.file_path is not None:
+            df = pd.read_excel(self.file_path, sheet_name=self.sheet_name)
+            self.metadata = {}
+            
+            # Assuming the first row contains the slide names and the first column contains the core numbers
+            slide_names = df.columns[1:-2]
+            for slide in slide_names:
+                slide = str(slide)  # Ensure slide name is a string
+                self.metadata[slide] = {}
+                for index, row in df.iterrows():
+                    core_number = str(row.iloc[0])  # Ensure core number is a string
+                    if slide in row:
+                        self.metadata[slide][core_number] = row[slide]
+                    else:
+                        self.metadata[slide][core_number] = row[int(slide)]
+
+        if self.dearry_map_file is not None:
+            self.mapping = {}
+            for line in open(self.dearry_map_file).readlines():
+                label, core_number = line[:-1].split(',')
+                self.mapping[label] = core_number
+            print(self.mapping) 
+
+    def get_dearray_mapping(self):
+        if hasattr(self, 'dearry_map_file'):
+            return self.mapping
+        else:
+            return None
     
     def _extract_numerical_part(self, slide_name):
         """
@@ -66,7 +79,10 @@ class ReadMetadataReader:
         :param slide_name: The slide name to be checked.
         :return: True if metadata is available for the specified slide name, False otherwise.
         """
-        return self._extract_numerical_part(slide_name) in self.metadata
+        if hasattr(self, 'metadata'):
+            return self._extract_numerical_part(slide_name) in self.metadata
+        else:
+            return False
     
     def get_number_of_cores(self):
         """
@@ -74,7 +90,10 @@ class ReadMetadataReader:
         
         :return: Number of cores.
         """
-        return len(next(iter(self.metadata.values())))
+        if hasattr(self, 'metadata'):
+            return len(next(iter(self.metadata.values())))
+        else:
+            return -1
     
     def get_metadata_string(self, slide_name):
         """
@@ -83,25 +102,29 @@ class ReadMetadataReader:
         :param slide_name: The slide name for which metadata is to be retrieved.
         :return: Formatted metadata string for the specified slide name.
         """
-        numerical_part = self._extract_numerical_part(slide_name)
-        slide_metadata = self.metadata.get(numerical_part, {})
+        if hasattr(self, 'metadata'):
 
-        if not slide_metadata:
-            return "No metadata available for the given slide name."
+            numerical_part = self._extract_numerical_part(slide_name)
+            slide_metadata = self.metadata.get(numerical_part, {})
 
-        metadata_strings = []
-        cores = list(slide_metadata.items())
+            if not slide_metadata:
+                return "No metadata available for the given slide name."
 
-        for i in range(0, len(cores), 2):
-            core1 = cores[i]
-            core2 = cores[i + 1] if i + 1 < len(cores) else None
+            metadata_strings = []
+            cores = list(slide_metadata.items())
 
-            if core2:
-                metadata_strings.append(f"Core {core1[0]}: {core1[1]}, Core {core2[0]}: {core2[1]}")
-            else:
-                metadata_strings.append(f"Core {core1[0]}: {core1[1]}")
+            for i in range(0, len(cores), 2):
+                core1 = cores[i]
+                core2 = cores[i + 1] if i + 1 < len(cores) else None
 
-        return "\n".join(metadata_strings)
+                if core2:
+                    metadata_strings.append(f"Core {core1[0]}: {core1[1]}, Core {core2[0]}: {core2[1]}")
+                else:
+                    metadata_strings.append(f"Core {core1[0]}: {core1[1]}")
+
+            return "\n".join(metadata_strings)
+        else:
+            return ''
 
 
 # Example usage:

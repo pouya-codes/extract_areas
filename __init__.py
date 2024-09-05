@@ -5,15 +5,15 @@ import glob, os, gc
 import cv2
 import json
 from PIL import Image
-from process_file import ImageProcessor
+from src.process_file import ImageProcessor
 import numpy as np
 from matplotlib.path import Path
 from myparser import parse_args
-from utils import process_annotation, process_mask, process_qupath_dearray
-from generate_mask import MaskGenerator
-from patch_extractor import PatchExtractor
-from cell_classifier import CellClassifier
-from read_metadata import ReadMetadataReader
+from src.utils import process_annotation, process_mask, process_qupath_dearray
+from src.generate_mask import MaskGenerator
+from src.patch_extractor import PatchExtractor
+from src.cell_classifier import CellClassifier
+from src.read_metadata import ReadMetadataReader
 import pyvips
 import time
 from tqdm import tqdm
@@ -53,8 +53,8 @@ class SlideProcessor:
         except Exception as e:
             print(f"Cannot open {slide_path}\nError: {e}")
             return None
-    def init_metadata(self, metadata_path, metadata_sheet):
-        self.metadata_reader = ReadMetadataReader(metadata_path, metadata_sheet)
+    def init_metadata(self, metadata_path, metadata_sheet, dearry_map_file):
+        self.metadata_reader = ReadMetadataReader(metadata_path, metadata_sheet, dearry_map_file)
 
     def process_slides(self, staining, save_regions = False):
         slides = [slide for ext in self.extensions for slide in glob.glob(os.path.join(self.slides_path, ext))]
@@ -69,7 +69,7 @@ class SlideProcessor:
 
             if os.path.exists(os.path.join(self.output_path, file_name)):
                 print(f"Skipping {file_name} as it already exists in the output path")
-                # continue
+                continue
 
             os.makedirs(os.path.join(self.output_path, file_name), exist_ok=True)
 
@@ -115,7 +115,7 @@ class SlideProcessor:
 
             if has_dearray:
                 dearray_path = dearray_path[0]
-                regions = process_qupath_dearray(dearray_path, slide, 5000)
+                regions = process_qupath_dearray(dearray_path, slide, 5000, self.metadata_reader.get_dearray_mapping() if hasattr(self, 'metadata_reader')  else None)
    
             if regions is None: # If no regions are found
                 continue
@@ -129,11 +129,11 @@ class SlideProcessor:
                     # continue
                 if not self.metadata_reader.check_slide_exists(file_name):
                     print(f"Warning: Slide {file_name} not found in metadata")
-                    continue
+                    # continue
             
             os.makedirs(os.path.join(self.output_path, file_name), exist_ok=True)
 
-            for label, areas in (regions.items() if not qupath_exists else tqdm(regions.items())):
+            for label, areas in (regions.items() if not qupath_exists else tqdm(regions.items())): 
                 # print(f"Processing {label} areas")
 
                 # if label == "Other" or label == "Stroma":
@@ -141,13 +141,14 @@ class SlideProcessor:
                 for area in (areas if qupath_exists else tqdm(areas)):
                     # print(f"Processing {label} area {area}")
                     x, y, width, height, *_ = area if len(area) == 5 else area + [None]
+                    print(x, y, width, height)
                     region = slide.crop(x, y, width, height)
                     region = Image.fromarray(region.numpy())
                     # region = slide.read_region((x, y), 0, (width, height))
                     if (save_regions):
                         os.makedirs(os.path.join(self.output_path, file_name, label), exist_ok=True)
-                        img_path = os.path.join(self.output_path, file_name, label, f"{x}_{y}_{width}_{height}.png")
-                        region.save(img_path)
+                        # img_path = os.path.join(self.output_path, file_name, label, f"{x}_{y}_{width}_{height}.png")
+                        # region.save(img_path)
 
                     if hasattr(self, 'image_processor'):                      
                         region = region.resize((width // self.slide_down_sample_rate, height // self.slide_down_sample_rate))
@@ -186,12 +187,12 @@ class SlideProcessor:
 
                         
                         if (save_regions):
-                            np_array = np.array(overlay_image)
-                            background = region.convert("RGBA")
-                            overlay = overlay_image.convert("RGBA")
-                            new_img = Image.blend(background, overlay, 0.25)
-                            img_path = os.path.join(self.output_path, file_name, label, f"{x}_{y}_{width}_{height}_overlaid.png")
-                            new_img.save(img_path)
+                            # np_array = np.array(overlay_image)
+                            # background = region.convert("RGBA")
+                            # overlay = overlay_image.convert("RGBA")
+                            # new_img = Image.blend(background, overlay, 0.25)
+                            # img_path = os.path.join(self.output_path, file_name, label, f"{x}_{y}_{width}_{height}_overlaid.png")
+                            # new_img.save(img_path)
 
                             if scoring is not None:
                                 if 'cell_coords' in scoring:
@@ -259,10 +260,10 @@ def main():
         processor.init_cell_classifier(args.cell_classifier_model, args.staining)
 
     if args.metadata:
-        processor.init_metadata(args.metadata, args.metadata_sheet)
+        processor.init_metadata(args.metadata_path, args.metadata_sheet, args.dearry_map_file)
         
 
-    processor.process_slides(args.staining, save_regions=False)
+    processor.process_slides(args.staining, save_regions=True)
 
 if __name__ == "__main__":
     main()

@@ -31,9 +31,11 @@ def parse_args():
     # Add required staining argument
     parser.add_argument("--staining", type=str, choices=['nuclear', 'membrane', 'cytoplasm'], help="Type of staining", required=True)
 
-    # Add metadata argument
-    parser.add_argument("--metadata", type=str, help="Path to the excel metadata file", required=False)
+    # Add metadata argument"
+    parser.add_argument("--metadata", action='store_true', help="Providing metadata", required=False)
+    parser.add_argument("--metadata_path", type=str, help="Path to the excel metadata file", required=False, default=None)
     parser.add_argument("--metadata_sheet", type=str, help="Name of the sheet to read from the metadata file", required=False, default=None)
+    parser.add_argument("--dearry_map_file", type=str, help="The path to csv file that contains dearry maping", required=False, default=None)
 
     return parser.parse_args()
 

@@ -179,13 +179,16 @@ def map_labels_to_indices(dataset):
     
     return label_map
 
-def process_qupath_dearray(qupath_dearray_path, pyvips_slide, tmaspot_size=3200):
+def process_qupath_dearray(qupath_dearray_path, pyvips_slide, tmaspot_size = 3200, dearray_mapping = None):
     bounds_x = float(pyvips_slide.get('openslide.bounds-x')) if pyvips_slide.get_typeof('openslide.bounds-x') != 0 else 0
     bounds_y = float(pyvips_slide.get('openslide.bounds-y')) if pyvips_slide.get_typeof('openslide.bounds-y') != 0 else 0
     ratio_x = 1.0/float(pyvips_slide.get('openslide.mpp-x'))
     ratio_y = 1.0/float(pyvips_slide.get('openslide.mpp-y'))
     dataset = np.loadtxt(qupath_dearray_path, dtype=str, skiprows=1)
-    label_map = map_labels_to_indices(dataset)
+    if dearray_mapping is None:
+        label_map = map_labels_to_indices(dataset)
+    else:
+        label_map = dearray_mapping
     regions = {}
     for row in dataset:
         label, missing, x, y = row[-4:]
