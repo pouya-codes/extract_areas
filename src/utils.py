@@ -12,7 +12,7 @@ def process_annotation(annotation_path):
         annotations = f.readlines()    
     for annotation in annotations:
         # Split the annotation by the label
-        parts = re.split(r'(Tumor|Stroma|Other)', annotation)
+        parts = re.split(r'(Tumor|Stroma|Other|Tumor Negative|Immune Cells|Necrosis)', annotation)
         # Process each polygon
         for i in range(1, len(parts), 2):
             label = parts[i]

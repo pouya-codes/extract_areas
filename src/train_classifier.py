@@ -9,7 +9,7 @@ import os
 from tqdm import tqdm
 
 # Define the path to the input data
-input_path = 'D:/Develop/UBC/Datasets/R204brafv600e/patches_64_5'
+input_path = 'D:/Develop/UBC/Datasets/Run_155_ER//results_areas'
 num_epochs = 10
 
 # Define the transformations
@@ -54,6 +54,7 @@ def create_model():
 
 # Perform the stratified k-fold cross-test
 accuracies, sensitivities, specificities = [], [], []
+counter = 0
 for train_index, test_index in skf.split(np.zeros(len(dataset)), labels):
     model, criterion, optimizer = create_model()
     # Create the train and test datasets
@@ -83,6 +84,8 @@ for train_index, test_index in skf.split(np.zeros(len(dataset)), labels):
             print(f'Epoch {epoch}/{num_epochs}, Loss: {loss.item()}')
 
         if(epoch == num_epochs):
+            torch.save(model.state_dict(), f'model_epoch_{epoch}_{counter}.pth')
+            counter +=1
             # Evaluate the model
             model.eval()
             with torch.no_grad():

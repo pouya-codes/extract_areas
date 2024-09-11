@@ -33,7 +33,7 @@ class SlideProcessor:
             os.makedirs(self.output_path, exist_ok=True)
 
     def init_annotation_exporter(self, patch_size, positive_annotations_label, output_path):
-        self.patch_exporter = PatchExtractor(patch_size, positive_annotations_label, output_path, window_size=64)
+        self.patch_exporter = PatchExtractor(patch_size, output_path, positive_annotations_label, window_size=64)
 
     def init_mask_generator(self, model_path):
         self.mask_generator = MaskGenerator(model_path)
@@ -69,7 +69,7 @@ class SlideProcessor:
 
             if os.path.exists(os.path.join(self.output_path, file_name)):
                 print(f"Skipping {file_name} as it already exists in the output path")
-                continue
+                # continue
 
             os.makedirs(os.path.join(self.output_path, file_name), exist_ok=True)
 
@@ -136,12 +136,12 @@ class SlideProcessor:
             for label, areas in (regions.items() if not qupath_exists else tqdm(regions.items())): 
                 # print(f"Processing {label} areas")
 
-                # if label == "Other" or label == "Stroma":
-                    # continue
+                if label == "Other" or label == "Stroma":
+                    continue
                 for area in (areas if qupath_exists else tqdm(areas)):
                     # print(f"Processing {label} area {area}")
                     x, y, width, height, *_ = area if len(area) == 5 else area + [None]
-                    print(x, y, width, height)
+                    # print(x, y, width, height)
                     region = slide.crop(x, y, width, height)
                     region = Image.fromarray(region.numpy())
                     # region = slide.read_region((x, y), 0, (width, height))
@@ -149,6 +149,9 @@ class SlideProcessor:
                         os.makedirs(os.path.join(self.output_path, file_name, label), exist_ok=True)
                         # img_path = os.path.join(self.output_path, file_name, label, f"{x}_{y}_{width}_{height}.png")
                         # region.save(img_path)
+
+                    if hasattr(self, 'patch_exporter'):
+                        self.patch_exporter.export_patches(region, None, label , area, file_name)
 
                     if hasattr(self, 'image_processor'):                      
                         region = region.resize((width // self.slide_down_sample_rate, height // self.slide_down_sample_rate))

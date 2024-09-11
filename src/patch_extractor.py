@@ -7,7 +7,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 class PatchExtractor:
-    def __init__(self, patch_size, annotation_label, output_path, window_size=32, stride=1):
+    def __init__(self, patch_size, output_path, annotation_label, window_size=32, stride=1):
         self.patch_size = patch_size
         self.annotation_label = annotation_label
         self.output_path = output_path
@@ -101,8 +101,28 @@ class PatchExtractor:
                     extended[y_min:y_max, x_min:x_max] = 255
         return extended
 
+
+    def extract_patches(self, region, path, label, file_name, reference):
+        x_r, y_r = reference
+        path.vertices -= np.array(reference)
+        patch_size = self.window_size * 2
+        bbox = path.get_extents()
+        x_min_bbox, y_min_bbox, x_max_bbox, y_max_bbox = bbox.x0, bbox.y0, bbox.x1, bbox.y1
+
+        for x in range(int(x_min_bbox), int(x_max_bbox), patch_size * self.stride):
+            for y in range(int(y_min_bbox), int(y_max_bbox), patch_size * self.stride):
+                # Create a grid of points in the patch
+                patch_points = [(x + dx, y + dy) for dx in range(patch_size) for dy in range(patch_size)]
+
+                # Check if all points in the patch are inside the polygon
+                if np.all(path.contains_points(patch_points)):
+                    # Extract the patch
+                    patch = region.crop((x, y, x + patch_size, y + patch_size))
+                    patch.save(os.path.join(self.output_path, file_name, label, f'patch_{x_r + x}_{ y_r + y}.png'))
+
+
     def export_patches(self, region, cells_coords, label , area, file_name):
-        if label not in self.annotation_label:
+        if self.annotation_label is not None and label not in self.annotation_label:
             return
 
         x, y, width, height, *path = area if len(area) == 5 else area + [None]
@@ -112,9 +132,13 @@ class PatchExtractor:
         path = path[0]
 
         # subtract the x and y from the path vertices to covert global coordinates to local coordinates
-        path.vertices -= np.array([x, y])
-        cells_center = self.find_centers(cells_coords)
-        self.save_centers(cells_center, region, path, label, file_name)
+        reference = [x, y]
+        if cells_coords is not None:
+            path.vertices -= np.array(reference)
+            cells_center = self.find_centers(cells_coords)
+            self.save_centers(cells_center, region, path, label, file_name)
+        else: 
+            self.extract_patches(region, path, label, file_name, reference)
 
 
         # overlay_array = np.array(overlay_image)
