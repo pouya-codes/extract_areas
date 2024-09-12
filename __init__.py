@@ -44,7 +44,8 @@ class SlideProcessor:
         self.overlay_down_sample_rate = overlay_down_sample_rate
 
     def init_cell_classifier(self, model_path, staining):
-        self.cell_classifier = CellClassifier(model_path, generate_gradcam = True if staining == 'membrane' else False) # generate gradcam if membrane staining
+        # self.cell_classifier = CellClassifier(model_path, generate_gradcam = True if staining == 'membrane' else False) # generate gradcam if membrane staining
+        self.cell_classifier = CellClassifier(model_path, generate_gradcam = False) 
 
     def open_wsi_slide(self, slide_path):
         try:
@@ -134,27 +135,28 @@ class SlideProcessor:
             os.makedirs(os.path.join(self.output_path, file_name), exist_ok=True)
 
             for label, areas in (regions.items() if not qupath_exists else tqdm(regions.items())): 
-                # print(f"Processing {label} areas")
-
                 if label == "Other" or label == "Stroma":
                     continue
                 for area in (areas if qupath_exists else tqdm(areas)):
-                    # print(f"Processing {label} area {area}")
                     x, y, width, height, *_ = area if len(area) == 5 else area + [None]
-                    # print(x, y, width, height)
                     region = slide.crop(x, y, width, height)
                     region = Image.fromarray(region.numpy())
-                    # region = slide.read_region((x, y), 0, (width, height))
+
                     if (save_regions):
                         os.makedirs(os.path.join(self.output_path, file_name, label), exist_ok=True)
-                        # img_path = os.path.join(self.output_path, file_name, label, f"{x}_{y}_{width}_{height}.png")
-                        # region.save(img_path)
+                        img_path = os.path.join(self.output_path, file_name, label, f"{x}_{y}_{width}_{height}.png")
+                        region.save(img_path)
 
                     if hasattr(self, 'patch_exporter'):
                         self.patch_exporter.export_patches(region, None, label , area, file_name)
 
                     if hasattr(self, 'image_processor'):                      
                         region = region.resize((width // self.slide_down_sample_rate, height // self.slide_down_sample_rate))
+                        if hasattr(self, 'cell_classifier'):
+                            overlay_image, scoring = self.cell_classifier.process_image_with_sliding_window_batch(region, area)
+                            overlay_image.save(os.path.join(self.output_path, file_name, label, f"{x}_{y}_{width}_{height}_overlaid.png"))
+                            continue
+
                         if staining in ['nuclear', 'cytoplasm']:
                             results, scoring = self.image_processor.test_img(
                                 region, 
@@ -170,6 +172,7 @@ class SlideProcessor:
                                 self.patch_exporter.export_patches(region, cells_coords, label , area, file_name)
                             else:
                                 del scoring['cell_coords']  
+
                         elif staining == 'membrane':
                             if hasattr(self, 'cell_classifier'):
                                 overlay_image, scoring = self.cell_classifier.process_image_with_sliding_window_batch(region, area)

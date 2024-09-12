@@ -66,7 +66,7 @@ class CellClassifier:
             gradcam_resized = np.array(Image.fromarray(gradcams[i]).resize((self.patch_size, self.patch_size), Image.BILINEAR))
             x_end = self.patch_size if (x_pos + self.patch_size) < width else width - x_pos
             y_end = self.patch_size if (y_pos + self.patch_size) < height else height - y_pos
-            if labels[i] == 1:
+            if labels[i] == 0:
                 heatmap[y_pos:y_pos + y_end, x_pos:x_pos + x_end] += gradcam_resized[:y_end, :x_end]
         return labels, probabilities
 
@@ -79,9 +79,13 @@ class CellClassifier:
 
         predicted_labels = predicted.cpu().numpy()
         predicted_probabilities = probabilities[range(len(predicted)), predicted].cpu().numpy()
-
-        target_category = [ClassifierOutputTarget(1)] * image_batch.shape[0] 
-        cam = self.gradient_cam(input_tensor=image_batch, targets=target_category)
+        if (self.generate_gradcam):
+            target_category = [ClassifierOutputTarget(1)] * image_batch.shape[0] 
+            cam = self.gradient_cam(input_tensor=image_batch, targets=target_category)
+        else:
+            cam = np.zeros((image_batch.shape[0], self.patch_size, self.patch_size), dtype=np.uint8)
+            cam[predicted_labels == 0] = 1
+            cam[predicted_labels == 1] = 0
         return cam, predicted_labels, predicted_probabilities
 
     def process_image_with_sliding_window_batch(self, image, area):
@@ -124,9 +128,11 @@ class CellClassifier:
             for idx, label in enumerate(labels):
                 if probabilities[idx] > self.classifier_threshold:
                     voting[label] += 1
-
-        overlay = cv2.applyColorMap(np.uint8(255 * heatmap), cv2.COLORMAP_JET)
-        overlay = cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB)
+        if(self.generate_gradcam):
+            overlay = cv2.applyColorMap(np.uint8(255 * heatmap), cv2.COLORMAP_JET)
+            overlay = cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB)
+        else:
+            overlay = np.uint8(255 * heatmap)
 
         return Image.fromarray(overlay), self._create_json(voting)
 
