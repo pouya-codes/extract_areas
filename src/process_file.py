@@ -35,10 +35,10 @@ class ImageProcessor:
         
 
         
-    def test_img(self, img, eager_mode=False, color_dapi=False, color_marker=False, cell_classifier = None):
+    def test_img(self, img, eager_mode=False, color_dapi=False, color_marker=False, patch_classifier_mask = None):
         img = img.convert('RGB')
-        if cell_classifier is not None:
-            images, scoring = infer_modalities(img, self.tile_size, self.model_dir, eager_mode, color_dapi, color_marker, self.opt, cell_classifier)
+        if patch_classifier_mask is not None:
+            images, scoring = infer_modalities(img, self.tile_size, self.model_dir, eager_mode, color_dapi, color_marker, self.opt, patch_classifier_mask)
         else:
             images, scoring = infer_modalities(img, self.tile_size, self.model_dir, eager_mode, color_dapi, color_marker, self.opt)
         # if (self.post_processing):

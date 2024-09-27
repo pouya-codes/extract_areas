@@ -25,8 +25,8 @@ def parse_args():
     parser.add_argument("--export_positive_annotations", action='store_true', help="Export areas of positive annotations")
     parser.add_argument("--annotation_labels", type=str, nargs='+', help="The lable of the annotations to be exported", default=None)
 
-    parser.add_argument("--cell_classifier", action='store_true', help="Apply cell classifier on the extracted cells")
-    parser.add_argument("--cell_classifier_model", type=str, help="Path to the cell classifier model")
+    parser.add_argument("--patch_classifier", action='store_true', help="Apply cell classifier on the extracted cells")
+    parser.add_argument("--patch_classifier_model", type=str, help="Path to the cell classifier model")
 
     # Add required staining argument
     parser.add_argument("--staining", type=str, choices=['nuclear', 'membrane', 'cytoplasm'], help="Type of staining", required=False, default='nuclear')

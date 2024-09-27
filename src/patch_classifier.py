@@ -10,7 +10,7 @@ import numpy as np
 import torch.nn.functional as F
 import cv2
 
-class CellClassifier:
+class PatchClassifier:
     def __init__(self, model_path, device=None, patch_size=64, batch_size=32, classifier_threshold=0.5, generate_gradcam=False):
         self.device = device if device else torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.model_path = model_path
@@ -59,15 +59,19 @@ class CellClassifier:
         predicted_probability = probabilities[0, predicted_label].item()
         return predicted_label, predicted_probability
     
-    def _process_patches(self, patches, positions, heatmap, width, height):
+    def _process_patches(self, patches, positions, heatmap, classifier_img, width, height):
         patches_tensor = torch.cat(patches)
-        gradcams, labels, probabilities = self._generate_gradcam(patches_tensor)
+        gradcams, classifier_overlay, labels, probabilities = self._generate_gradcam(patches_tensor)
         for i, (x_pos, y_pos) in enumerate(positions):
-            gradcam_resized = np.array(Image.fromarray(gradcams[i]).resize((self.patch_size, self.patch_size), Image.BILINEAR))
+            if gradcams is not None:
+                gradcam_resized = np.array(Image.fromarray(gradcams[i]).resize((self.patch_size, self.patch_size), Image.BILINEAR))
+            classifier_overlay_resized = np.array(Image.fromarray(classifier_overlay[i]).resize((self.patch_size, self.patch_size), Image.NEAREST))
             x_end = self.patch_size if (x_pos + self.patch_size) < width else width - x_pos
             y_end = self.patch_size if (y_pos + self.patch_size) < height else height - y_pos
             if labels[i] == 0:
-                heatmap[y_pos:y_pos + y_end, x_pos:x_pos + x_end] += gradcam_resized[:y_end, :x_end]
+                if gradcams is not None:
+                    heatmap[y_pos:y_pos + y_end, x_pos:x_pos + x_end] += gradcam_resized[:y_end, :x_end]
+                classifier_img[y_pos:y_pos + y_end, x_pos:x_pos + x_end] += classifier_overlay_resized[:y_end, :x_end]
         return labels, probabilities
 
     
@@ -83,14 +87,16 @@ class CellClassifier:
             target_category = [ClassifierOutputTarget(1)] * image_batch.shape[0] 
             cam = self.gradient_cam(input_tensor=image_batch, targets=target_category)
         else:
-            cam = np.zeros((image_batch.shape[0], self.patch_size, self.patch_size), dtype=np.uint8)
-            cam[predicted_labels == 0] = 1
-            cam[predicted_labels == 1] = 0
-        return cam, predicted_labels, predicted_probabilities
+            cam = None
+        classifier_img = np.zeros((image_batch.shape[0], self.patch_size, self.patch_size), dtype=np.uint8)
+        classifier_img[predicted_labels == 0] = 1
+        classifier_img[predicted_labels == 1] = 0
+        return cam, classifier_img, predicted_labels, predicted_probabilities
 
     def process_image_with_sliding_window_batch(self, image, area):
         width, height = image.size
         heatmap = np.zeros((height, width))
+        classifier_img = np.zeros((height, width))
 
         x, y, width, height, *path = area if len(area) == 5 else area + [None]
         if path is None:
@@ -115,7 +121,7 @@ class CellClassifier:
                     positions.append((x, y))
 
                     if len(patches) == self.batch_size:
-                        labels, probabilities = self._process_patches(patches, positions, heatmap, width, height)
+                        labels, probabilities = self._process_patches(patches, positions, heatmap, classifier_img, width, height)
                         for idx, label in enumerate(labels):
                             if probabilities[idx] > self.classifier_threshold:
                                 voting[label] += 1
@@ -124,17 +130,19 @@ class CellClassifier:
 
         # Process remaining patches
         if patches:
-            labels, probabilities = self._process_patches(patches, positions, heatmap, width, height)
+            labels, probabilities = self._process_patches(patches, positions, heatmap, classifier_img, width, height)
             for idx, label in enumerate(labels):
                 if probabilities[idx] > self.classifier_threshold:
                     voting[label] += 1
         if(self.generate_gradcam):
             overlay = cv2.applyColorMap(np.uint8(255 * heatmap), cv2.COLORMAP_JET)
             overlay = cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB)
+            overlay = Image.fromarray(overlay)
         else:
-            overlay = np.uint8(255 * heatmap)
+            overlay = None
 
-        return Image.fromarray(overlay), self._create_json(voting)
+        classifier_img = np.uint8(255 * classifier_img)
+        return overlay, Image.fromarray(classifier_img), self._create_json(voting)
 
     def _create_json(self, voting):
     # Create the JSON object

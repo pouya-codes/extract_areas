@@ -105,7 +105,7 @@ class PatchExtractor:
     def extract_patches(self, region, path, label, file_name, reference):
         x_r, y_r = reference
         path.vertices -= np.array(reference)
-        patch_size = self.window_size * 2
+        patch_size = self.patch_size
         bbox = path.get_extents()
         x_min_bbox, y_min_bbox, x_max_bbox, y_max_bbox = bbox.x0, bbox.y0, bbox.x1, bbox.y1
 
@@ -117,6 +117,7 @@ class PatchExtractor:
                 # Check if all points in the patch are inside the polygon
                 if np.all(path.contains_points(patch_points)):
                     # Extract the patch
+                    os.makedirs(os.path.join(self.output_path, file_name, label), exist_ok=True)
                     patch = region.crop((x, y, x + patch_size, y + patch_size))
                     patch.save(os.path.join(self.output_path, file_name, label, f'patch_{x_r + x}_{ y_r + y}.png'))
 

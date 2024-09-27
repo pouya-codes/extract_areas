@@ -12,22 +12,26 @@ def process_annotation(annotation_path):
         annotations = f.readlines()    
     for annotation in annotations:
         # Split the annotation by the label
-        parts = re.split(r'(Tumor|Stroma|Other|Tumor Negative|Immune Cells|Necrosis)', annotation)
+        index = annotation.find(' [')
+        label = annotation[:index]
+        points_str = annotation[index+1:].strip('[]\n')
+        # parts = re.split(r'(Tumor|Stroma|Other|Tumor Negative|Immune Cells|Necrosis)', annotation)
+        # print(len(parts))
         # Process each polygon
-        for i in range(1, len(parts), 2):
-            label = parts[i]
-            points_str = parts[i + 1].strip('[]')
-            points = re.findall(r'Point: (.*?), (.*?)(?:,|$)', points_str)
-            # Convert the points to integers
-            points = [(int(float(x.replace(']',''))), int(float(y.replace(']','')))) for x, y in points]
-            # # Create a path from the points
-            path = Path(points)
-            # Calculate the bounding box of the polygon
-            min_x = max(0, min(x for x, y in points))
-            max_x = max(0, max(x for x, y in points))
-            min_y = max(0, min(y for x, y in points))
-            max_y = max(0, max(y for x, y in points))
-            regions[label].append((min_x, min_y, max_x - min_x, max_y - min_y, path))
+        # for i in range(1, len(parts), 2):
+            # label = parts[i]
+            # points_str = parts[i + 1].strip('[]')
+        points = re.findall(r'Point: (.*?), (.*?)(?:,|$)', points_str)
+        # Convert the points to integers
+        points = [(int(float(x.replace(']',''))), int(float(y.replace(']','')))) for x, y in points]
+        # # Create a path from the points
+        path = Path(points)
+        # Calculate the bounding box of the polygon
+        min_x = max(0, min(x for x, y in points))
+        max_x = max(0, max(x for x, y in points))
+        min_y = max(0, min(y for x, y in points))
+        max_y = max(0, max(y for x, y in points))
+        regions[label].append((min_x, min_y, max_x - min_x, max_y - min_y, path))
     return regions
 
 def process_mask(mask_path, slide_dimensions):

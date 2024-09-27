@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import roc_curve, auc
 
 
-result_path = r'D:/Develop/UBC/Datasets/Run_155_ER/results'
+result_path = r'D:/Develop/UBC/Datasets/Run_155_ER/results_classifier_3'
 votes = r'D:/Develop/UBC/Datasets/Run_155_ER/labels.csv'
 
 
@@ -29,6 +29,7 @@ for folder in os.listdir(result_path):
             if os.path.isfile(os.path.join(result_path, folder, core)):
                 continue
             core_number = core.split(',')[-1]
+            # print(folder)
             data = json.load(open(glob(os.path.join(result_path, folder, core, '*.json'))[0]))
             if core_number not in dict_res[slide_name]:
                 continue
