@@ -71,7 +71,10 @@ class PatchClassifier:
             if labels[i] == 0:
                 if gradcams is not None:
                     heatmap[y_pos:y_pos + y_end, x_pos:x_pos + x_end] += gradcam_resized[:y_end, :x_end]
-                classifier_img[y_pos:y_pos + y_end, x_pos:x_pos + x_end] += classifier_overlay_resized[:y_end, :x_end]
+                try:
+                    classifier_img[y_pos:y_pos + y_end, x_pos:x_pos + x_end] += classifier_overlay_resized[:y_end, :x_end]
+                except:
+                    pass
         return labels, probabilities
 
     

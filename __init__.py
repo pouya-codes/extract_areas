@@ -9,7 +9,7 @@ from src.process_file import ImageProcessor
 import numpy as np
 from matplotlib.path import Path
 from myparser import parse_args
-from src.utils import process_annotation, process_mask, process_qupath_dearray
+from src.utils import process_annotation, process_mask, process_mask, process_qupath_dearray
 from src.generate_mask import MaskGenerator
 from src.patch_extractor import PatchExtractor
 from src.patch_classifier import PatchClassifier
@@ -17,7 +17,7 @@ from src.read_metadata import ReadMetadataReader
 import pyvips
 import time
 from tqdm import tqdm
-
+from COI import COIs
 class SlideProcessor:
     def __init__(self, slides_path, output_path, masks_path = "", annotations_path = "", qupath_dearray_paths = "", slide_down_sample_rate = 5):
         self.slides_path = slides_path
@@ -46,7 +46,7 @@ class SlideProcessor:
 
     def init_patch_classifier(self, model_path, staining):
         # self.patch_classifier = CellClassifier(model_path, generate_gradcam = True if staining == 'membrane' else False) # generate gradcam if membrane staining
-        self.gradcam = False
+        self.gradcam = True
         self.patch_classifier = PatchClassifier(model_path, generate_gradcam = self.gradcam) 
 
     def open_wsi_slide(self, slide_path):
@@ -120,7 +120,7 @@ class SlideProcessor:
 
             if has_dearray:
                 dearray_path = dearray_path[0]
-                regions = process_qupath_dearray(dearray_path, slide, 5000, self.metadata_reader.get_dearray_mapping() if hasattr(self, 'metadata_reader')  else None)
+                regions = process_qupath_dearray(dearray_path, slide, 1500, self.metadata_reader.get_dearray_mapping() if hasattr(self, 'metadata_reader')  else None)
    
             if regions is None: # If no regions are found
                 continue
@@ -135,22 +135,38 @@ class SlideProcessor:
                 if not self.metadata_reader.check_slide_exists(file_name):
                     print(f"Warning: Slide {file_name} not found in metadata")
                     # continue
-            
+            if not qupath_exists:
+                continue
+
             os.makedirs(os.path.join(self.output_path, file_name), exist_ok=True)
 
             for label, areas in (regions.items() if not qupath_exists else tqdm(regions.items())): 
+                core_label = file_name.split('_')[0] + "_" + label.split(',')[1]
+                if core_label not in COIs:
+                    continue
                 # if label == "Other" or label == "Stroma":
                     # continue
                 for area in (areas if qupath_exists else tqdm(areas)):
                     x, y, width, height, *_ = area if len(area) == 5 else area + [None]
+                    # print(f"Processing {label} area {x}, {y}, {width}, {height}")
+                    if x < 0:
+                        x = 0
+                    if y < 0:
+                        y = 0
+                    if x + width > slide_dimensions[0]:
+                        width = slide_dimensions[0] - x
+                    if y + height > slide_dimensions[1]:
+                        height = slide_dimensions[1] - y
+                    
                     region = slide.crop(x, y, width, height)
                     region = Image.fromarray(region.numpy())
+                    
 
                     if (save_regions):
                         os.makedirs(os.path.join(self.output_path, file_name, label), exist_ok=True)
                         img_path = os.path.join(self.output_path, file_name, label, f"{x}_{y}_{width}_{height}.png")
-                        region.save(img_path)
-
+                        # region.save(img_path)
+                    # continue
                     if hasattr(self, 'patch_exporter'):
                         self.patch_exporter.export_patches(region, None, label , area, file_name)
 
