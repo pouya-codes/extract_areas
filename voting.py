@@ -8,9 +8,14 @@ from shutil import copy as cp
 
 
 result_path = r'D:/Develop/UBC/Datasets/TNP_Array/results_classifier_dearray'
+result_path = r'D:/Develop/UBC/Datasets/R204brafv600e/new_method'
+# result_path = r'D:/Develop/UBC/Datasets/Run_155_ER/Deepliif_Classifier'
+
 result_path_2 = r'D:/Develop/UBC/Datasets/TNP_Array/results_classifier_dearray_2'
-votes = r'D:/Develop/UBC/Datasets/TNP_Array/labels.csv'
-number_of_cores = 80
+votes = r'D:/Develop/UBC/Datasets/R204brafv600e/labels.csv'
+# votes = r'D:/Develop/UBC/Datasets/Run_155_ER/labels.csv'
+number_of_cores = 40
+# number_of_cores = 13
 out_path = r'D:/Develop/UBC/Datasets/TNP_Array/results_classifier_dearray/error_analysis'
 
 lines = open(votes).readlines()
@@ -27,7 +32,10 @@ scores = []
 cores = []
 
 for folder in os.listdir(result_path):
-    slide_name = folder.split('_')[0]
+    try:
+        slide_name = folder.split('_')[1]
+    except:
+        continue
     if slide_name in dict_res:
         for core in os.listdir(os.path.join(result_path, folder)):
             if os.path.isfile(os.path.join(result_path, folder, core)):
@@ -52,6 +60,31 @@ for folder in os.listdir(result_path):
 fpr, tpr, thresholds = roc_curve(true_labels, scores)
 roc_auc = auc(fpr, tpr)
 
+# Calculate Youden's J statistic to find the optimal threshold
+J = tpr - fpr
+optimal_idx = np.argmax(J)
+optimal_threshold = thresholds[optimal_idx]
+
+# Classify the predictions using the optimal threshold
+predicted_labels = [1 if score >= optimal_threshold else 0 for score in scores]
+
+# Count TP, TN, FP, and FN
+TP = sum((true_label == 1) and (pred_label == 1) for true_label, pred_label in zip(true_labels, predicted_labels))
+TN = sum((true_label == 0) and (pred_label == 0) for true_label, pred_label in zip(true_labels, predicted_labels))
+FP = sum((true_label == 0) and (pred_label == 1) for true_label, pred_label in zip(true_labels, predicted_labels))
+FN = sum((true_label == 1) and (pred_label == 0) for true_label, pred_label in zip(true_labels, predicted_labels))
+
+# Print the results
+print(f"Optimal Threshold: {optimal_threshold}")
+print(f"Total Number of Cases: {len(true_labels)}")
+print(f"True Positives (TP): {TP}")
+print(f"True Negatives (TN): {TN}")
+print(f"False Positives (FP): {FP}")
+print(f"False Negatives (FN): {FN}")
+
+# exit()
+
+
 # Plot ROC curve
 plt.figure()
 plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (area = {roc_auc:.2f})')
@@ -75,14 +108,14 @@ plt.legend(loc='lower right')
 #                  fontsize=8,
 #                  color='blue')
 
-# plt.show()
-# exit()
+plt.show()
+exit()
 
 # Print sensitivity and specificity for each threshold
-# for i, threshold in enumerate(thresholds):
-#     sensitivity = tpr[i]
-#     specificity = 1 - fpr[i]
-#     print(f'Threshold: {threshold:.2f}, Sensitivity: {sensitivity:.2f}, Specificity: {specificity:.2f}')
+for i, threshold in enumerate(thresholds):
+    sensitivity = tpr[i]
+    specificity = 1 - fpr[i]
+    print(f'Threshold: {threshold:.2f}, Sensitivity: {sensitivity:.2f}, Specificity: {specificity:.2f}')
 # Choose a threshold (e.g., 0.5)
 threshold = 0.01
 
@@ -93,6 +126,7 @@ predicted_labels = [1 if score >= threshold else 0 for score in scores]
 fp_cases = [(core, true_label, score) for core, true_label, score, pred_label in zip(cores, true_labels, scores, predicted_labels) if true_label == 0 and pred_label == 1]
 fn_cases = [(core, true_label, score) for core, true_label, score, pred_label in zip(cores, true_labels, scores, predicted_labels) if true_label == 1 and pred_label == 0]
 
+# exit()
 # Print FP and FN cases
 print("False Positive (FP) cases:")
 os.makedirs(os.path.join(out_path, 'FP'), exist_ok=True)
@@ -117,7 +151,7 @@ for core, true_label, score in fp_cases:
     print(f'Core: {core}, True Label: {true_label}, Score: {score}')
 
 
-# os.makedirs(os.path.join(out_path, 'FN'), exist_ok=True)
+os.makedirs(os.path.join(out_path, 'FN'), exist_ok=True)
 # print("\nFalse Negative (FN) cases:")
 for core, true_label, score in fn_cases:
 

@@ -62,39 +62,48 @@ class PatchClassifier:
     def _process_patches(self, patches, positions, heatmap, classifier_img, width, height):
         patches_tensor = torch.cat(patches)
         gradcams, classifier_overlay, labels, probabilities = self._generate_gradcam(patches_tensor)
+        # return None, None
         for i, (x_pos, y_pos) in enumerate(positions):
             if gradcams is not None:
                 gradcam_resized = np.array(Image.fromarray(gradcams[i]).resize((self.patch_size, self.patch_size), Image.BILINEAR))
             classifier_overlay_resized = np.array(Image.fromarray(classifier_overlay[i]).resize((self.patch_size, self.patch_size), Image.NEAREST))
             x_end = self.patch_size if (x_pos + self.patch_size) < width else width - x_pos
             y_end = self.patch_size if (y_pos + self.patch_size) < height else height - y_pos
-            if labels[i] == 0:
+            if labels[i] == 1:
                 if gradcams is not None:
                     heatmap[y_pos:y_pos + y_end, x_pos:x_pos + x_end] += gradcam_resized[:y_end, :x_end]
                 try:
                     classifier_img[y_pos:y_pos + y_end, x_pos:x_pos + x_end] += classifier_overlay_resized[:y_end, :x_end]
                 except:
+                    print("Error")
                     pass
         return labels, probabilities
 
     
     def _generate_gradcam(self, image_batch):
+        # print(image_batch.shape)
+
         with torch.no_grad():
             outputs = self.model(image_batch)
             probabilities = F.softmax(outputs, dim=1)
             _, predicted = torch.max(outputs, 1)
 
-        predicted_labels = predicted.cpu().numpy()
-        predicted_probabilities = probabilities[range(len(predicted)), predicted].cpu().numpy()
         if (self.generate_gradcam):
             target_category = [ClassifierOutputTarget(1)] * image_batch.shape[0] 
             cam = self.gradient_cam(input_tensor=image_batch, targets=target_category)
+            # cam = None
+            
         else:
             cam = None
-        classifier_img = np.zeros((image_batch.shape[0], self.patch_size, self.patch_size), dtype=np.uint8)
-        classifier_img[predicted_labels == 0] = 1
-        classifier_img[predicted_labels == 1] = 0
-        return cam, classifier_img, predicted_labels, predicted_probabilities
+        
+        predicted_labels = predicted.cpu().numpy()
+        predicted_probabilities = probabilities[range(len(predicted)), predicted].cpu().numpy()
+        
+        classifier_overlay = np.zeros((image_batch.shape[0], self.patch_size, self.patch_size), dtype=np.uint8)
+        classifier_overlay[predicted_labels == 0] = 1
+        classifier_overlay[predicted_labels == 1] = 0
+
+        return cam, classifier_overlay, predicted_labels, predicted_probabilities
 
     def process_image_with_sliding_window_batch(self, image, area):
         width, height = image.size
@@ -125,6 +134,9 @@ class PatchClassifier:
 
                     if len(patches) == self.batch_size:
                         labels, probabilities = self._process_patches(patches, positions, heatmap, classifier_img, width, height)
+                        # patches = []
+                        # positions = []
+                        # continue
                         for idx, label in enumerate(labels):
                             if probabilities[idx] > self.classifier_threshold:
                                 voting[label] += 1
@@ -145,7 +157,8 @@ class PatchClassifier:
             overlay = None
 
         classifier_img = np.uint8(255 * classifier_img)
-        return overlay, Image.fromarray(classifier_img), self._create_json(voting)
+        score = self._create_json(voting)
+        return overlay, Image.fromarray(classifier_img), score
 
     def _create_json(self, voting):
     # Create the JSON object

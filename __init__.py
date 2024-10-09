@@ -19,13 +19,14 @@ import time
 from tqdm import tqdm
 from COI import COIs
 class SlideProcessor:
-    def __init__(self, slides_path, output_path, masks_path = "", annotations_path = "", qupath_dearray_paths = "", slide_down_sample_rate = 5):
+    def __init__(self, slides_path, output_path, masks_path = "", annotations_path = "", qupath_dearray_paths = "", slide_down_sample_rate = 5, overlay_down_sample_rate = 4):
         self.slides_path = slides_path
         self.output_path = output_path
         self.masks_path = masks_path
         self.annotations_path = annotations_path
         self.qupath_dearray_paths = qupath_dearray_paths
         self.slide_down_sample_rate = slide_down_sample_rate
+        self.overlay_down_sample_rate = overlay_down_sample_rate
         self.extensions = ['*.svs', '*.tiff', "*.tif", '*.ndpi']
         self.gradcam = False
 
@@ -40,13 +41,13 @@ class SlideProcessor:
         self.mask_generator = MaskGenerator(model_path)
 
 
-    def init_image_processor(self, model_dir, tile_size = 256, overlay_down_sample_rate = 5, post_processing = True, gpu_ids=[]):
+    def init_image_processor(self, model_dir, tile_size = 256, post_processing = True, gpu_ids=[]):
         self.image_processor = ImageProcessor(model_dir, tile_size, post_processing, gpu_ids)
-        self.overlay_down_sample_rate = overlay_down_sample_rate
+
 
     def init_patch_classifier(self, model_path, staining):
         # self.patch_classifier = CellClassifier(model_path, generate_gradcam = True if staining == 'membrane' else False) # generate gradcam if membrane staining
-        self.gradcam = True
+        self.gradcam = False
         self.patch_classifier = PatchClassifier(model_path, generate_gradcam = self.gradcam) 
 
     def open_wsi_slide(self, slide_path):
@@ -70,8 +71,9 @@ class SlideProcessor:
             regions = None
             # slide_dimensions = slide.dimensions
 
-            if os.path.exists(os.path.join(self.output_path, file_name)):
-                print(f"Skipping {file_name} as it already exists in the output path")
+            # if os.path.exists(os.path.join(self.output_path, file_name)):
+            #     print(f"Skipping {file_name} as it already exists in the output path")
+            #     continue
                 
 
             os.makedirs(os.path.join(self.output_path, file_name), exist_ok=True)
@@ -92,19 +94,22 @@ class SlideProcessor:
 
             if not has_annotation and not has_annotation and not has_mask and not has_dearray:
                 if hasattr(self, 'mask_generator'):
-                    print(f"Generating mask for {slide_path}")
-                    mask, thumb = self.mask_generator.generate_mask(slide_path)
-                    thumb.write_to_file(os.path.join(self.output_path, file_name, f"{file_name}_thumb.png"))
                     mask_path = os.path.join(self.output_path, file_name, f"{file_name}_mask.png")
-                    if(mask is not None):
-                        has_mask = True
-                        cv2.imwrite(mask_path, mask)
+                    has_mask = os.path.exists(mask_path)
+                    if not has_mask:
+                        mask, thumb = self.mask_generator.generate_mask(slide_path)
+                        thumb.write_to_file(os.path.join(self.output_path, file_name, f"{file_name}_thumb.png"))
+                        
+                        if(mask is not None):
+                            print(f"{mask_path}")
+                            has_mask = True
+                            cv2.imwrite(mask_path, mask)
                 else:
                     print(f"No mask/annotation found for {slide_path}. Skipping...")
                     continue
 
             
-            if hasattr(self, 'image_processor'):
+            if hasattr(self, 'image_processor') or hasattr(self, 'patch_classifier'):
                 heat_map = np.zeros((slide_dimensions[1] // self.overlay_down_sample_rate, slide_dimensions[0] // self.overlay_down_sample_rate, 3), dtype=np.uint8)
 
             if hasattr(self, 'patch_classifier'):
@@ -120,7 +125,7 @@ class SlideProcessor:
 
             if has_dearray:
                 dearray_path = dearray_path[0]
-                regions = process_qupath_dearray(dearray_path, slide, 1500, self.metadata_reader.get_dearray_mapping() if hasattr(self, 'metadata_reader')  else None)
+                regions = process_qupath_dearray(dearray_path, slide, 5000, self.metadata_reader.get_dearray_mapping() if hasattr(self, 'metadata_reader')  else None)
    
             if regions is None: # If no regions are found
                 continue
@@ -135,15 +140,15 @@ class SlideProcessor:
                 if not self.metadata_reader.check_slide_exists(file_name):
                     print(f"Warning: Slide {file_name} not found in metadata")
                     # continue
-            if not qupath_exists:
+            if self.qupath_dearray_paths and not qupath_exists:
                 continue
 
             os.makedirs(os.path.join(self.output_path, file_name), exist_ok=True)
 
             for label, areas in (regions.items() if not qupath_exists else tqdm(regions.items())): 
-                core_label = file_name.split('_')[0] + "_" + label.split(',')[1]
-                if core_label not in COIs:
-                    continue
+                # core_label = file_name.split('_')[0] + "_" + label.split(',')[1]
+                # if core_label not in COIs:
+                    # continue
                 # if label == "Other" or label == "Stroma":
                     # continue
                 for area in (areas if qupath_exists else tqdm(areas)):
@@ -165,15 +170,16 @@ class SlideProcessor:
                     if (save_regions):
                         os.makedirs(os.path.join(self.output_path, file_name, label), exist_ok=True)
                         img_path = os.path.join(self.output_path, file_name, label, f"{x}_{y}_{width}_{height}.png")
-                        # region.save(img_path)
+                        region_resized = region.resize((int(region.width // self.overlay_down_sample_rate), int(region.height // self.overlay_down_sample_rate)))
+                        region_resized.save(img_path)
                     # continue
                     if hasattr(self, 'patch_exporter'):
                         self.patch_exporter.export_patches(region, None, label , area, file_name)
 
-                    if hasattr(self, 'image_processor'):                      
+                    if hasattr(self, 'image_processor') or hasattr(self, 'patch_classifier'):                      
                         region = region.resize((width // self.slide_down_sample_rate, height // self.slide_down_sample_rate))
-                        if hasattr(self, 'patch_classifier'):
-                            gradcam, patch_classifier_mask, scoring = self.patch_classifier.process_image_with_sliding_window_batch(region, area)
+                        if hasattr(self, 'patch_classifier') and staining in ['nuclear', 'cytoplasm']:
+                            gradcam_img, patch_classifier_mask, scoring = self.patch_classifier.process_image_with_sliding_window_batch(region, area)
                             if (save_regions):
                                 os.makedirs(os.path.join(self.output_path, file_name, label), exist_ok=True)
                                 patch_classifier_mask.save(os.path.join(self.output_path, file_name, label, f"{x}_{y}_{width}_{height}_classifier.png"))
@@ -198,8 +204,7 @@ class SlideProcessor:
 
                         elif staining == 'membrane':
                             if hasattr(self, 'patch_classifier'):
-                                overlay_image, scoring = self.patch_classifier.process_image_with_sliding_window_batch(region, area)
-                                print("main", scoring)
+                                overlay_image,_ , scoring = self.patch_classifier.process_image_with_sliding_window_batch(region, area)
                             else:
                                 print("Cell classifier not found. Skipping...")
                                 continue
@@ -220,9 +225,10 @@ class SlideProcessor:
                             np_array = np.array(overlay_image)
                             background = region.convert("RGBA")
                             overlay = overlay_image.convert("RGBA")
-                            new_img = Image.blend(background, overlay, 0.25)
+                            result_img = Image.blend(background, overlay, 0.25)
                             img_path = os.path.join(self.output_path, file_name, label, f"{x}_{y}_{width}_{height}_overlaid.png")
-                            new_img.save(img_path)
+                            result_img_resized = result_img.resize((int(result_img.width // self.overlay_down_sample_rate), int(result_img.height // self.overlay_down_sample_rate)))
+                            result_img_resized.save(img_path)
 
                             if scoring is not None:
                                 if 'cell_coords' in scoring:
@@ -253,8 +259,8 @@ class SlideProcessor:
                             offset_width = region_width - heat_map.shape[1]
                             
                         heat_map[y:region_height, x:region_width, :] = np_array[:region_y-offset_height, :region_x-offset_width, :]
-                        if (self.gradcam):
-                            np_array = np.array(gradcam.resize((width_overlay //overlay_to_slide_ratio, height_overlay // overlay_to_slide_ratio)))
+                        if (self.gradcam and staining in ['nuclear', 'cytoplasm']):
+                            np_array = np.array(gradcam_img.resize((width_overlay //overlay_to_slide_ratio, height_overlay // overlay_to_slide_ratio)))
                             gradcam_overlay[y:region_height, x:region_width, :] = np_array[:region_y-offset_height, :region_x-offset_width, :]
                 gc.collect()
 
@@ -281,9 +287,10 @@ def main():
                                args.masks_path, 
                                args.annotations_path,
                                args.qupath_dearray_paths,
-                               args.slide_down_sample_rate)
+                               args.slide_down_sample_rate,
+                               args.overlay_down_sample_rate)
     if args.deepliif:
-        processor.init_image_processor(args.model_dir, args.tile_size, args.overlay_down_sample_rate, args.post_processing)
+        processor.init_image_processor(args.model_dir, args.tile_size, args.post_processing)
 
     if args.mask_generator:
         processor.init_mask_generator(args.model_path)
