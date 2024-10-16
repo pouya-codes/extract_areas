@@ -69,7 +69,7 @@ class PatchClassifier:
             classifier_overlay_resized = np.array(Image.fromarray(classifier_overlay[i]).resize((self.patch_size, self.patch_size), Image.NEAREST))
             x_end = self.patch_size if (x_pos + self.patch_size) < width else width - x_pos
             y_end = self.patch_size if (y_pos + self.patch_size) < height else height - y_pos
-            if labels[i] == 1:
+            if labels[i] == 0:
                 if gradcams is not None:
                     heatmap[y_pos:y_pos + y_end, x_pos:x_pos + x_end] += gradcam_resized[:y_end, :x_end]
                 try:

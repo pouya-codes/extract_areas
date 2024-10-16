@@ -183,6 +183,7 @@ class SlideProcessor:
                             if (save_regions):
                                 os.makedirs(os.path.join(self.output_path, file_name, label), exist_ok=True)
                                 patch_classifier_mask.save(os.path.join(self.output_path, file_name, label, f"{x}_{y}_{width}_{height}_classifier.png"))
+                                # exit()
                                 # gradcam.save(os.path.join(self.output_path, file_name, label, f"{x}_{y}_{width}_{height}_gradcam.png"))
                             
 

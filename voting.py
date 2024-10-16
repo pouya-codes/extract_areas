@@ -9,13 +9,13 @@ from shutil import copy as cp
 
 result_path = r'D:/Develop/UBC/Datasets/TNP_Array/results_classifier_dearray'
 result_path = r'D:/Develop/UBC/Datasets/R204brafv600e/new_method'
-# result_path = r'D:/Develop/UBC/Datasets/Run_155_ER/Deepliif_Classifier'
+result_path = r'D:/Develop/UBC/Datasets/Run_155_PR/Results'
 
 result_path_2 = r'D:/Develop/UBC/Datasets/TNP_Array/results_classifier_dearray_2'
 votes = r'D:/Develop/UBC/Datasets/R204brafv600e/labels.csv'
-# votes = r'D:/Develop/UBC/Datasets/Run_155_ER/labels.csv'
+votes = r'D:/Develop/UBC/Datasets/Run_155_ER/labels.csv'
 number_of_cores = 40
-# number_of_cores = 13
+number_of_cores = 13
 out_path = r'D:/Develop/UBC/Datasets/TNP_Array/results_classifier_dearray/error_analysis'
 
 lines = open(votes).readlines()
@@ -33,7 +33,7 @@ cores = []
 
 for folder in os.listdir(result_path):
     try:
-        slide_name = folder.split('_')[1]
+        slide_name = folder.split('_')[0]
     except:
         continue
     if slide_name in dict_res:
