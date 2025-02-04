@@ -93,6 +93,10 @@ def parse_args():
         "--patch_classifier_model", type=str, help="Path to the cell classifier model"
     )
 
+    parser.add_argument(
+        "--patch_size", type=str, help="Size for the extracted patches", default=64
+    )
+
     # Add required staining argument
     parser.add_argument(
         "--staining",
