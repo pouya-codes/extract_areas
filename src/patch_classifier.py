@@ -11,7 +11,7 @@ import torch.nn.functional as F
 import cv2
 
 class PatchClassifier:
-    def __init__(self, model_path, device=None, patch_size=64, batch_size=32, classifier_threshold=0.5, generate_gradcam=False):
+    def __init__(self, model_path, device=None, patch_size=64, batch_size=32, classifier_threshold=0.8, generate_gradcam=False):
         self.device = device if device else torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.model_path = model_path
         self.patch_size = patch_size

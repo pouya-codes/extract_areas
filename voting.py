@@ -7,15 +7,16 @@ from sklearn.metrics import roc_curve, auc
 from shutil import copy as cp
 
 
-result_path = r'D:/Develop/UBC/Datasets/TNP_Array/results_classifier_dearray'
-result_path = r'D:/Develop/UBC/Datasets/R204brafv600e/new_method'
-result_path = r'D:/Develop/UBC/Datasets/Run_155_PR/Results'
+result_path = r'D:/Develop/UBC/Datasets/TNP_Array/results_tumor_0.5_classifier'
+# result_path = r'D:/Develop/UBC/Datasets/R204brafv600e/new_method'
+# result_path = r'D:/Develop/UBC/Datasets/Run_155_PR/Results_tumor'
 
 result_path_2 = r'D:/Develop/UBC/Datasets/TNP_Array/results_classifier_dearray_2'
 votes = r'D:/Develop/UBC/Datasets/R204brafv600e/labels.csv'
-votes = r'D:/Develop/UBC/Datasets/Run_155_ER/labels.csv'
-number_of_cores = 40
-number_of_cores = 13
+votes = r'D:/Develop/UBC/Datasets/TNP_Array/labels.csv'
+# votes = r'D:/Develop/UBC/Datasets/Run_155_ER/labels.csv'
+number_of_cores = 80
+# number_of_cores = 13
 out_path = r'D:/Develop/UBC/Datasets/TNP_Array/results_classifier_dearray/error_analysis'
 
 lines = open(votes).readlines()
@@ -50,8 +51,8 @@ for folder in os.listdir(result_path):
             label = dict_res[slide_name][core_number]
             if label == 'U':
                 continue
-            print(slide_name, core_number, label)
-            score = data['num_pos'] / data['num_total']
+            # print(slide_name, core_number, label)
+            score = 0 if data['num_total'] == 0 else (data['num_pos'] / data['num_total'])
             true_labels.append(1 if label == 'P' else 0)
             scores.append(score)
             cores.append(f'{slide_name}_{core_number}')
@@ -126,7 +127,17 @@ predicted_labels = [1 if score >= threshold else 0 for score in scores]
 fp_cases = [(core, true_label, score) for core, true_label, score, pred_label in zip(cores, true_labels, scores, predicted_labels) if true_label == 0 and pred_label == 1]
 fn_cases = [(core, true_label, score) for core, true_label, score, pred_label in zip(cores, true_labels, scores, predicted_labels) if true_label == 1 and pred_label == 0]
 
-# exit()
+with open('miss_cases.txt', 'w') as f:
+    for case in fp_cases:
+        core_number, _,_ = case
+        f.write(f"'{core_number}',")
+
+    for case in fn_cases:
+        core_number, _,_ = case
+        f.write(f"'{core_number}',")
+
+
+exit()
 # Print FP and FN cases
 print("False Positive (FP) cases:")
 os.makedirs(os.path.join(out_path, 'FP'), exist_ok=True)

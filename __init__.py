@@ -125,7 +125,7 @@ class SlideProcessor:
 
             if has_dearray:
                 dearray_path = dearray_path[0]
-                regions = process_qupath_dearray(dearray_path, slide, 5000, self.metadata_reader.get_dearray_mapping() if hasattr(self, 'metadata_reader')  else None)
+                regions = process_qupath_dearray(dearray_path, slide, 1500, self.metadata_reader.get_dearray_mapping() if hasattr(self, 'metadata_reader')  else None)
    
             if regions is None: # If no regions are found
                 continue
@@ -148,7 +148,7 @@ class SlideProcessor:
             for label, areas in (regions.items() if not qupath_exists else tqdm(regions.items())): 
                 # core_label = file_name.split('_')[0] + "_" + label.split(',')[1]
                 # if core_label not in COIs:
-                    # continue
+                #     continue
                 # if label == "Other" or label == "Stroma":
                     # continue
                 for area in (areas if qupath_exists else tqdm(areas)):
@@ -297,7 +297,7 @@ def main():
         processor.init_mask_generator(args.model_path)
 
     if args.export_positive_annotations:
-        processor.init_annotation_exporter( 64, args.annotation_labels, args.output_path)
+        processor.init_annotation_exporter(48, args.annotation_labels, args.output_path)
 
     if args.patch_classifier:
         processor.init_patch_classifier(args.patch_classifier_model, args.staining)
@@ -306,7 +306,7 @@ def main():
         processor.init_metadata(args.metadata_path, args.metadata_sheet, args.dearry_map_file)
         
 
-    processor.process_slides(args.staining, save_regions=True)
+    processor.process_slides(args.staining, save_regions=False)
 
 if __name__ == "__main__":
     main()
