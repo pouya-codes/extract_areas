@@ -69,6 +69,9 @@ def parse_args():
     parser.add_argument(
         "--model_path", type=str, help="Path to the segment anything model checkpoint"
     )
+    parser.add_argument(
+        "--model_config", type=str, required=False, default=None, help="Path to the segment anything 2 model config"
+    )
 
     # Export areas of positive annotations
     parser.add_argument(
@@ -94,7 +97,7 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--patch_size", type=str, help="Size for the extracted patches", default=64
+        "--patch_size", type=int, help="Size for the extracted patches", default=64
     )
 
     # Add required staining argument

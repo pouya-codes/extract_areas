@@ -6,6 +6,50 @@ import numpy as np
 from distutils.util import strtobool
 import matplotlib.path as mpath
 
+from PIL import Image
+
+
+def create_tissue_mask(x, y, width, height, area_path, slide_downsample):
+    x = x // slide_downsample
+    y = y // slide_downsample
+    width = width // slide_downsample
+    height = height // slide_downsample
+    area_path = area_path[0]
+    vertices = area_path.vertices // slide_downsample
+    # Subtract x and y values from each vertex
+    updated_vertices = vertices - np.array([x, y])        
+    # Create a new Path object with the updated vertices
+    area_path = Path(updated_vertices, area_path.codes)
+    return area_path
+
+
+def create_mask_from_annotation(x, y, width, height, area_path, downsample_factor=8
+                                ):
+    x = x // downsample_factor
+    y = y // downsample_factor
+    width = width // downsample_factor
+    height = height // downsample_factor
+    area_path = area_path[0]
+    vertices = area_path.vertices // downsample_factor
+
+    # Subtract x and y values from each vertex
+    updated_vertices = vertices - np.array([x, y])    
+    # Create a new Path object with the updated vertices
+    area_path = Path(updated_vertices, area_path.codes)
+
+    # Create a black image
+    binary_image = np.zeros((height, width), dtype=np.uint8)
+    # Create a grid of coordinates
+    y, x = np.mgrid[:height, :width]
+    coordinates = np.vstack((x.ravel(), y.ravel())).T
+
+    # Check which coordinates are inside the path
+    mask = area_path.contains_points(coordinates).reshape((height, width))    
+    # Set the pixels inside the path to white
+    binary_image[mask] = 255
+    return binary_image
+    # return Image.fromarray(binary_image)
+
 def process_annotation(annotation_path):
     regions = defaultdict(list)
     with open(annotation_path, 'r') as f:

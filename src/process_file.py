@@ -35,12 +35,12 @@ class ImageProcessor:
         
 
         
-    def test_img(self, img, eager_mode=False, color_dapi=False, color_marker=False, patch_classifier_mask = None):
+    def test_img(self, img, eager_mode=False, color_dapi=False, color_marker=False, patch_classifier_mask=None, tissue_mask=None):
         img = img.convert('RGB')
-        if patch_classifier_mask is not None:
-            images, scoring = infer_modalities(img, self.tile_size, self.model_dir, eager_mode, color_dapi, color_marker, self.opt, patch_classifier_mask)
-        else:
-            images, scoring = infer_modalities(img, self.tile_size, self.model_dir, eager_mode, color_dapi, color_marker, self.opt)
+        # if patch_classifier_mask is not None:
+        images, scoring = infer_modalities(img, self.tile_size, self.model_dir, eager_mode, color_dapi, color_marker, self.opt, patch_classifier_mask, tissue_mask)
+        # else:
+            # images, scoring = infer_modalities(img, self.tile_size, self.model_dir, eager_mode, color_dapi, color_marker, self.opt, tissue_mask)
         # if (self.post_processing):
             # https://github.com/nadeemlab/DeepLIIF?tab=readme-ov-file#cloud-api-endpoints
             # images, scoring = postprocess(img, images, self.tile_size, 'DeepLIIF', seg_thresh=150, size_thresh='auto', marker_thresh='auto', size_thresh_upper=None)

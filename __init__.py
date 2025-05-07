@@ -16,6 +16,8 @@ from src.utils import (
     process_annotation,
     process_mask,
     process_qupath_dearray,
+    create_mask_from_annotation,
+    create_tissue_mask,
 )
 from src.generate_mask import MaskGenerator
 from src.patch_extractor import PatchExtractor
@@ -58,8 +60,8 @@ class SlideProcessor:
             patch_size, output_path, positive_annotations_label, window_size=32
         )
 
-    def init_mask_generator(self, model_path):
-        self.mask_generator = MaskGenerator(model_path)
+    def init_mask_generator(self, model_path, model_config):
+        self.mask_generator = MaskGenerator(model_path, model_config)
 
     def init_image_processor(
         self, model_dir, tile_size=256, post_processing=True, gpu_ids=[]
@@ -111,15 +113,19 @@ class SlideProcessor:
 
             has_annotation, has_mask, has_dearray = False, False, False
             if self.masks_path:
-                mask_path = glob.glob(
-                    os.path.join(self.masks_path, file_name + "*.png")
-                )
-                has_mask = len(mask_path) == 1
-                mask_path = mask_path[0]
+                if os.path.exists(os.path.join(self.masks_path, file_name + ".png")):
+                    mask_path = os.path.join(self.masks_path, file_name + ".png")
+                    has_mask = True
+                else:
+                    mask_path = glob.glob(
+                        os.path.join(self.masks_path, file_name + "*.png")
+                    )
+                    has_mask = len(mask_path) == 1
+                    mask_path = mask_path[0]
 
             if self.annotations_path:
                 annotation_path = glob.glob(
-                    os.path.join(self.annotations_path, file_name + "*.txt")
+                    os.path.join(self.annotations_path, f"*{file_name}.txt")
                 )
                 has_annotation = len(annotation_path) == 1
 
@@ -152,6 +158,7 @@ class SlideProcessor:
                             print(f"{mask_path}")
                             has_mask = True
                             cv2.imwrite(mask_path, mask)
+                            exit(0)
                 else:
                     print(f"No mask/annotation found for {slide_path}. Skipping...")
                     continue
@@ -226,7 +233,19 @@ class SlideProcessor:
                 # if label == "Other" or label == "Stroma":
                 # continue
                 for area in areas if qupath_exists else tqdm(areas):
-                    x, y, width, height, *_ = area if len(area) == 5 else area + [None]
+                    x, y, width, height, *area_path = (
+                        area if len(area) == 5 else area + [None]
+                    )
+                    # print(area_path[0])
+                    # exit()
+                    if area_path:
+                        tissue_mask = create_mask_from_annotation(
+                            x, y, width, height, area_path, self.slide_down_sample_rate
+                        )
+                        # a.save("test.png")
+                        # exit()
+                    else:
+                        tissue_mask = None
                     # print(f"Processing {label} area {x}, {y}, {width}, {height}")
                     if x < 0:
                         x = 0
@@ -240,6 +259,11 @@ class SlideProcessor:
                     region = slide.crop(x, y, width, height)
                     region = Image.fromarray(region.numpy())
 
+                    if save_regions or save_json:
+                        os.makedirs(
+                            os.path.join(self.output_path, file_name, label),
+                            exist_ok=True,
+                        )
                     if save_regions:
                         os.makedirs(
                             os.path.join(self.output_path, file_name, label),
@@ -273,6 +297,12 @@ class SlideProcessor:
                                 height // self.slide_down_sample_rate,
                             )
                         )
+                        # if area_path:
+                        #     tissue_mask = create_tissue_mask(
+                        #         x, y, width, height, area_path, self.slide_down_sample_rate
+                        #     )
+                        # else:
+                        #     tissue_mask = None
                         if hasattr(self, "patch_classifier") and staining in [
                             "nuclear",
                             "cytoplasm",
@@ -282,11 +312,6 @@ class SlideProcessor:
                                     region, area
                                 )
                             )
-                            if save_regions or save_json:
-                                os.makedirs(
-                                    os.path.join(self.output_path, file_name, label),
-                                    exist_ok=True,
-                                )
                             if save_regions:
                                 patch_classifier_mask.save(
                                     os.path.join(
@@ -310,6 +335,7 @@ class SlideProcessor:
                                     if (hasattr(self, "patch_classifier"))
                                     else None
                                 ),
+                                tissue_mask=tissue_mask,
                             )
                             overlay_image = results["SegRefined"]
 
@@ -448,10 +474,18 @@ class SlideProcessor:
                                 f"Warning cropping region due to width {region_width} > {heat_map.shape[1]}"
                             )
                             offset_width = region_width - heat_map.shape[1]
-
-                        heat_map[y:region_height, x:region_width, :] = np_array[
-                            : region_y - offset_height, : region_x - offset_width, :
-                        ]
+                        # Overwrite only where heat_map has 0 values
+                        heat_map_mask = (
+                            heat_map[y:region_height, x:region_width, :] == 0
+                        )
+                        heat_map[y:region_height, x:region_width, :][heat_map_mask] = (
+                            np_array[
+                                : region_y - offset_height, : region_x - offset_width, :
+                            ][heat_map_mask]
+                        )
+                        # heat_map[y:region_height, x:region_width, :] = np_array[
+                        #     : region_y - offset_height, : region_x - offset_width, :
+                        # ]
                         if self.gradcam and staining in ["nuclear", "cytoplasm"]:
                             np_array = np.array(
                                 gradcam_img.resize(
@@ -519,20 +553,22 @@ def main():
         )
 
     if args.mask_generator:
-        processor.init_mask_generator(args.model_path)
+        processor.init_mask_generator(args.model_path, args.model_config)
 
     if args.export_positive_annotations:
         processor.init_annotation_exporter(48, args.annotation_labels, args.output_path)
 
     if args.patch_classifier:
-        processor.init_patch_classifier(args.patch_classifier_model, patch_size=args.patch_size)
+        processor.init_patch_classifier(
+            args.patch_classifier_model, patch_size=args.patch_size
+        )
 
     if args.metadata:
         processor.init_metadata(
             args.metadata_path, args.metadata_sheet, args.dearry_map_file
         )
 
-    processor.process_slides(args.staining, save_regions=False, save_json=True)
+    processor.process_slides(args.staining, save_regions=False, save_json=False)
 
 
 if __name__ == "__main__":

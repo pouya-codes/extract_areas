@@ -7,12 +7,12 @@ from sklearn.metrics import roc_curve, auc
 from shutil import copy as cp
 
 
-result_path = r'D:/Develop/UBC/Datasets/TNP_Array/results_tumor_0.5_classifier'
+result_path = r'D:/Develop/UBC/Datasets/TNP_Array/results/results_tumor_normal_patch_128'
 # result_path = r'D:/Develop/UBC/Datasets/R204brafv600e/new_method'
 # result_path = r'D:/Develop/UBC/Datasets/Run_155_PR/Results_tumor'
 
-result_path_2 = r'D:/Develop/UBC/Datasets/TNP_Array/results_classifier_dearray_2'
-votes = r'D:/Develop/UBC/Datasets/R204brafv600e/labels.csv'
+# result_path_2 = r'D:/Develop/UBC/Datasets/TNP_Array/results_classifier_dearray_2'
+# votes = r'D:/Develop/UBC/Datasets/R204brafv600e/labels.csv'
 votes = r'D:/Develop/UBC/Datasets/TNP_Array/labels.csv'
 # votes = r'D:/Develop/UBC/Datasets/Run_155_ER/labels.csv'
 number_of_cores = 80
