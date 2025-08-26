@@ -78,6 +78,30 @@ def process_annotation(annotation_path):
         regions[label].append((min_x, min_y, max_x - min_x, max_y - min_y, path))
     return regions
 
+def extract_regions_from_mask(mask_bytes, slide_dimensions):
+        # Read mask from BytesIO object
+        mask_bytes.seek(0)
+        file_bytes = np.frombuffer(mask_bytes.read(), np.uint8)
+        mask = cv2.imdecode(file_bytes, cv2.IMREAD_GRAYSCALE)
+        mask_ratio_width = slide_dimensions[0] / mask.shape[1]
+        mask_ratio_height = slide_dimensions[1] / mask.shape[0]
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        regions = []
+        for idx, contour in enumerate(contours):
+            x, y, width, height = map(int, cv2.boundingRect(contour))
+            x, y, width, height = x * mask_ratio_width, y * mask_ratio_height, width * mask_ratio_width, height * mask_ratio_height
+            contour = contour.reshape(-1, 2)
+            contour_list = (contour * [mask_ratio_width, mask_ratio_height]).tolist()
+            region = {
+                "x": round(x),
+                "y": round(y),
+                "width": round(width),
+                "height": round(height),
+                "contour": contour_list
+            }
+            regions.append(region)
+        return {"Mask": regions}
+
 def process_mask(mask_path, slide_dimensions):
     mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
     mask_ratio_width = slide_dimensions[0] / mask.shape[1]

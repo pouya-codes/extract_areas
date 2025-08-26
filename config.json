@@ -1,0 +1,7 @@
+{
+  "sam_model_path": "TBD",
+  "sam2_model_path": "models/sam2/sam2.1_hiera_large.pt",
+  "sam2_config_path": "models/sam2/sam2.1_hiera_l.yaml",
+  "default_model": "sam2",
+  "deepliif_model_path": "models/deepliif/"
+}

@@ -18,10 +18,11 @@ class ImageProcessor:
         assert 'train_opt.txt' in files, f'file train_opt.txt is missing from model directory {self.model_dir}'
         
         self.opt = Options(path_file=os.path.join(self.model_dir, 'train_opt.txt'), mode='test')
-        self.opt.use_dp = False
+        # Enable DataParallel so models can utilize all provided GPUs during inference
+        self.opt.use_dp = True
         number_of_gpus_all = torch.cuda.device_count()
         if number_of_gpus_all < len(gpu_ids) and -1 not in gpu_ids:
-            number_of_gpus = 0
+            # number_of_gpus = 0
             gpu_ids = [-1]
             print(
                 f'Specified to use GPU {self.opt.gpu_ids} for inference, but there are only {number_of_gpus_all} GPU devices. Switched to CPU inference.')
