@@ -12,8 +12,8 @@
 #SBATCH --mem 6000
 
 # Load your environment
-bash /projects/ovcare/users/pouya_ahmadvand/miniconda3/etc/profile.d/conda.sh
-source activate fastapi_env        # or conda env
+# bash /projects/ovcare/users/pouya_ahmadvand/miniconda3/etc/profile.d/conda.sh
+#source activate fastapi_env        # or conda env
 
 # Get the compute node's hostname
 HOST=$(hostname)

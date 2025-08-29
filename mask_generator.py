@@ -81,7 +81,7 @@ class MaskGenerator:
         img,
         masks,
         median_ratio=0.7,
-        edge_margin=5,
+        edge_margin=0,
         variance_threshold=100,
         score_threshold=0.8,
         is_tma=False,

@@ -248,7 +248,7 @@ async def process_region_annotation_api(
     draw.polygon(clamped, outline=255, fill=255)
 
     # Apply mask (white=keep, black=white out)
-    white_bg = Image.new("RGB", region_image.size, (255, 255, 255))
+    white_bg = Image.new("RGB", region_image.size, (240, 240, 240))
     masked_region = Image.composite(region_image, white_bg, mask_image)
     # Process the region with the mask
     processed_image, score = image_processor.test_img(
@@ -258,15 +258,19 @@ async def process_region_annotation_api(
         color_marker=False,
         tissue_mask=mask_image,
     )
-    # save mask and region to disk for testing
-    mask_image.save(f"mask_{region_id}.png")
-    masked_region.save(f"region_{region_id}.png")
+
     if "cell_coords" in score:
         del score["cell_coords"]
     overlay_image = processed_image["SegRefined"]
+
     # white out the masked region
     white_bg = Image.new("RGB", overlay_image.size, (255, 255, 255))
     masked_result = Image.composite(overlay_image, white_bg, mask_image)
+    # save mask, region and overlay to disk for testing
+    # masked_result.save(f"tests/overlay_{region_id}.png")
+    # mask_image.save(f"tests/mask_{region_id}.png")
+    # masked_region.save(f"tests/region_{region_id}.png")
+    
     # Convert processed image to base64
     buffer = BytesIO()
     masked_result.save(buffer, format="PNG")
