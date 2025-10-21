@@ -3,7 +3,8 @@ temp*
 __pycache__/
 DeepLIIF
 .vscode/
-models/
+models/deepliif
+models/sam2
 *.sif
 bcpark*.py
 ~$*
