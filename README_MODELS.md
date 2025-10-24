@@ -677,24 +677,52 @@ sudo systemctl start pathology-api
 
 ## API Reference
 
-### List Models
+### Base URL
 
-```http
-GET /models/list
+```
+http://localhost:8000
+```
+
+All endpoints are relative to this base URL.
+
+---
+
+### Model Discovery & Information
+
+#### 1. List All Models
+
+**Endpoint:** `GET /models/list`
+
+Returns all registered and loaded models in the system.
+
+**Request:**
+```bash
+curl http://localhost:8000/models/list
 ```
 
 **Response:**
 ```json
 {
-  "registered_models": ["deepliif", "object_detector"],
-  "loaded_models": ["deepliif", "object_detector"]
+  "registered_models": ["deepliif", "example_model"],
+  "loaded_models": ["deepliif"]
 }
 ```
 
-### Get Model Info
+**Fields:**
+- `registered_models`: Models that have been registered but may not be initialized
+- `loaded_models`: Models that are loaded, initialized, and ready to use
 
-```http
-GET /models/{model_name}/info
+---
+
+#### 2. Get Model Information
+
+**Endpoint:** `GET /models/{model_name}/info`
+
+Returns detailed information about a specific model.
+
+**Request:**
+```bash
+curl http://localhost:8000/models/deepliif/info
 ```
 
 **Response:**
@@ -702,18 +730,56 @@ GET /models/{model_name}/info
 {
   "name": "deepliif",
   "version": "1.0.0",
-  "description": "DeepLIIF model for IHC analysis",
+  "description": "DeepLIIF: Deep-Learning Inferred Multiplex ImmunoFluorescence for IHC Image Analysis",
   "requires_mask": true,
   "supported_formats": ["PNG", "JPEG", "JPG"],
   "initialized": true,
-  "hyperparameters": {...}
+  "hyperparameters": {
+    "eager_mode": {
+      "type": "bool",
+      "default": false,
+      "description": "Use eager mode for single GPU processing"
+    },
+    "color_dapi": {
+      "type": "bool",
+      "default": false,
+      "description": "Whether to color DAPI in output"
+    },
+    "positive_threshold": {
+      "type": "float",
+      "default": 0.5,
+      "min": 0.0,
+      "max": 1.0,
+      "description": "Threshold for positive cell detection"
+    }
+  }
 }
 ```
 
-### Get Hyperparameters
+**Fields:**
+- `name`: Unique identifier for the model
+- `version`: Model version (semantic versioning)
+- `description`: Human-readable description
+- `requires_mask`: Whether model needs tissue mask for processing
+- `supported_formats`: List of supported image formats
+- `initialized`: Whether model is loaded and ready
+- `hyperparameters`: Available configuration options (see below)
 
-```http
-GET /models/{model_name}/hyperparameters
+**Status Codes:**
+- `200 OK`: Model found and information returned
+- `404 Not Found`: Model not registered in the system
+
+---
+
+#### 3. Get Model Hyperparameters
+
+**Endpoint:** `GET /models/{model_name}/hyperparameters`
+
+Returns schema for model-specific hyperparameters.
+
+**Request:**
+```bash
+curl http://localhost:8000/models/deepliif/hyperparameters
 ```
 
 **Response:**
@@ -724,66 +790,393 @@ GET /models/{model_name}/hyperparameters
     "eager_mode": {
       "type": "bool",
       "default": false,
-      "description": "Use eager mode for single GPU"
+      "description": "Use eager mode for single GPU processing. Set to True for single GPU, False for multi-GPU"
+    },
+    "color_dapi": {
+      "type": "bool",
+      "default": false,
+      "description": "Whether to color DAPI (nucleus) channel in output images"
+    },
+    "color_marker": {
+      "type": "bool",
+      "default": false,
+      "description": "Whether to color marker channel in output images"
+    },
+    "positive_threshold": {
+      "type": "float",
+      "default": 0.5,
+      "min": 0.0,
+      "max": 1.0,
+      "description": "Threshold value for classifying cells as positive (0.0-1.0)"
     }
   }
 }
 ```
 
-### Process Region with Annotation
+**Hyperparameter Types:**
 
-```http
-POST /process_region_annotation
-```
+| Type | Description | UI Control | Example |
+|------|-------------|------------|---------|
+| `bool` | Boolean flag | Checkbox | `{"eager_mode": true}` |
+| `int` | Integer number | Number input | `{"batch_size": 8}` |
+| `float` | Floating point | Number input | `{"threshold": 0.5}` |
+| `string` | Text value | Text input | `{"output_format": "png"}` |
+| `choice` | Enum selection | Dropdown | `{"device": "cuda"}` |
+
+**Status Codes:**
+- `200 OK`: Hyperparameters returned
+- `404 Not Found`: Model not found
+
+---
+
+### Image Processing
+
+#### 4. Process Region with Annotation Points
+
+**Endpoint:** `POST /process_region_annotation`
+
+Process a tissue region with polygon annotation points. The backend converts points to a binary mask automatically.
 
 **Request:**
+```bash
+curl -X POST http://localhost:8000/process_region_annotation \
+  -F "region=@tissue_region.jpg" \
+  -F 'mask=[{"x":100,"y":100},{"x":500,"y":100},{"x":500,"y":400},{"x":100,"y":400}]' \
+  -F "region_id=tissue_001" \
+  -F "model_name=deepliif" \
+  -F 'hyperparameters={"eager_mode": false, "positive_threshold": 0.5}'
 ```
-Content-Type: multipart/form-data
 
-region: <JPEG file>
-mask: '[{"x":50,"y":50},{"x":200,"y":50},...]'
-region_id: "tissue_1"
-model_name: "deepliif"
-```
+**Request Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `region` | File | Yes | Tissue region image (JPEG, PNG) |
+| `mask` | JSON string | Yes | Array of polygon points `[{"x":x1,"y":y1}, ...]` |
+| `region_id` | String | No | Identifier for this region (default: "unknown") |
+| `model_name` | String | No | Model to use (default: "deepliif") |
+| `hyperparameters` | JSON string | No | Model-specific parameters (default: `{}`) |
 
 **Response:**
 ```json
 {
   "status": "success",
-  "processed_image_base64": "iVBORw0KGgoAAAANSUhE...",
+  "processed_image_base64": "iVBORw0KGgoAAAANSUhEUgAA...(base64 encoded PNG)",
+  "overlay_base64": "iVBORw0KGgoAAAANSUhEUgAA...(base64 encoded overlay)",
   "score": {
-    "total_cells": 150,
-    "positive_cells": 42
+    "total_cells": 1247,
+    "positive_cells": 342,
+    "positive_percentage": 27.42,
+    "region_area_pixels": 250000
   },
-  "region_id": "tissue_1",
+  "region_id": "tissue_001",
   "model_used": "deepliif",
-  "model_version": "1.0.0"
+  "model_version": "1.0.0",
+  "processing_time_seconds": 3.42,
+  "hyperparameters_used": {
+    "eager_mode": false,
+    "positive_threshold": 0.5
+  }
 }
 ```
 
-### Process Region with Mask File
+**Response Fields:**
+- `status`: "success" or "error"
+- `processed_image_base64`: Base64-encoded result image (PNG)
+- `overlay_base64`: Base64-encoded overlay visualization
+- `score`: Model-specific quantitative results
+- `region_id`: Echo of the input region ID
+- `model_used`: Model that processed the image
+- `model_version`: Version of the model used
+- `processing_time_seconds`: Time taken to process
+- `hyperparameters_used`: Parameters used for this processing
 
-```http
-POST /process_region
+**Error Response:**
+```json
+{
+  "status": "error",
+  "error": "Model not found: unknown_model",
+  "region_id": "tissue_001"
+}
 ```
+
+**Status Codes:**
+- `200 OK`: Processing successful
+- `400 Bad Request`: Invalid parameters or image format
+- `404 Not Found`: Model not found
+- `500 Internal Server Error`: Processing failed
+
+---
+
+#### 5. Process Region with Mask Image
+
+**Endpoint:** `POST /process_region`
+
+Process a tissue region with a separate mask image file.
 
 **Request:**
+```bash
+curl -X POST http://localhost:8000/process_region \
+  -F "region=@tissue.png" \
+  -F "mask=@mask.png" \
+  -F "model_name=deepliif" \
+  -F 'hyperparameters={"color_dapi": true}'
 ```
-Content-Type: multipart/form-data
 
-region: <PNG file>
-mask: <PNG file>
-model_name: "deepliif"
+**Request Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `region` | File | Yes | Tissue region image |
+| `mask` | File | Yes | Binary mask image (white=tissue, black=background) |
+| `model_name` | String | No | Model to use (default: "deepliif") |
+| `hyperparameters` | JSON string | No | Model-specific parameters |
+
+**Response:** Same format as `/process_region_annotation`
+
+**Status Codes:** Same as `/process_region_annotation`
+
+---
+
+### Other Endpoints
+
+#### 6. Generate Tissue Mask
+
+**Endpoint:** `POST /generate_mask`
+
+Generate binary tissue mask from whole slide image using SAM2.
+
+**Request:**
+```bash
+curl -X POST http://localhost:8000/generate_mask \
+  -F "file=@slide.tif"
 ```
 
 **Response:**
 ```json
 {
   "status": "success",
-  "processed_image_base64": "iVBORw0KGgoAAAANSUhE...",
-  "score": {...},
-  "model_used": "deepliif"
+  "mask_base64": "iVBORw0KGgoAAAANSUhEUgAA...",
+  "mask_shape": [1024, 1024],
+  "tissue_percentage": 42.5
 }
+```
+
+---
+
+#### 7. Extract Tissue Regions
+
+**Endpoint:** `POST /extract_regions`
+
+Extract individual tissue regions from slide using mask.
+
+**Request:**
+```bash
+curl -X POST http://localhost:8000/extract_regions \
+  -F "slide=@slide.tif" \
+  -F "mask=@mask.png"
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "regions": [
+    {
+      "region_id": 0,
+      "bbox": [100, 200, 300, 400],
+      "image_base64": "iVBORw0KGgo..."
+    }
+  ],
+  "total_regions": 12
+}
+```
+
+---
+
+#### 8. Auto-Name Regions
+
+**Endpoint:** `POST /auto_name_regions`
+
+Generate descriptive names for tissue regions using AI.
+
+**Request:**
+```bash
+curl -X POST http://localhost:8000/auto_name_regions \
+  -F "file=@region.jpg"
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "name": "Dense lymphocytic infiltrate",
+  "confidence": 0.87
+}
+```
+
+---
+
+### Integration Examples
+
+#### Python Client
+
+```python
+import requests
+import json
+from io import BytesIO
+from PIL import Image
+
+class ModelAPIClient:
+    """Client for model processing API."""
+    
+    def __init__(self, base_url="http://localhost:8000"):
+        self.base_url = base_url
+    
+    def list_models(self):
+        """Get available models."""
+        response = requests.get(f"{self.base_url}/models/list")
+        return response.json()
+    
+    def get_model_info(self, model_name):
+        """Get model information."""
+        response = requests.get(f"{self.base_url}/models/{model_name}/info")
+        return response.json()
+    
+    def process_region(
+        self,
+        image: Image.Image,
+        annotation_points: list,
+        model_name: str = "deepliif",
+        hyperparameters: dict = None,
+        region_id: str = "unknown"
+    ):
+        """Process tissue region with annotation."""
+        # Convert image to bytes
+        buffer = BytesIO()
+        image.save(buffer, format='JPEG')
+        buffer.seek(0)
+        
+        # Prepare files and data
+        files = {'region': ('region.jpg', buffer, 'image/jpeg')}
+        data = {
+            'mask': json.dumps(annotation_points),
+            'region_id': region_id,
+            'model_name': model_name
+        }
+        
+        if hyperparameters:
+            data['hyperparameters'] = json.dumps(hyperparameters)
+        
+        # Send request
+        response = requests.post(
+            f"{self.base_url}/process_region_annotation",
+            files=files,
+            data=data
+        )
+        
+        return response.json()
+
+# Usage example
+client = ModelAPIClient()
+
+# List available models
+models = client.list_models()
+print(f"Available models: {models['loaded_models']}")
+
+# Get model info
+info = client.get_model_info("deepliif")
+print(f"Model: {info['name']} v{info['version']}")
+print(f"Description: {info['description']}")
+
+# Process a region
+image = Image.open("tissue_region.jpg")
+points = [
+    {"x": 100, "y": 100},
+    {"x": 500, "y": 100},
+    {"x": 500, "y": 400},
+    {"x": 100, "y": 400}
+]
+
+result = client.process_region(
+    image=image,
+    annotation_points=points,
+    model_name="deepliif",
+    hyperparameters={
+        "eager_mode": False,
+        "positive_threshold": 0.6
+    },
+    region_id="tissue_001"
+)
+
+print(f"Status: {result['status']}")
+print(f"Total cells: {result['score']['total_cells']}")
+print(f"Positive cells: {result['score']['positive_cells']}")
+```
+
+#### JavaScript/Fetch
+
+```javascript
+// Get model list
+async function listModels() {
+  const response = await fetch('http://localhost:8000/models/list');
+  const data = await response.json();
+  return data.loaded_models;
+}
+
+// Process region
+async function processRegion(imageFile, annotationPoints, modelName = 'deepliif') {
+  const formData = new FormData();
+  formData.append('region', imageFile);
+  formData.append('mask', JSON.stringify(annotationPoints));
+  formData.append('model_name', modelName);
+  formData.append('hyperparameters', JSON.stringify({
+    eager_mode: false,
+    positive_threshold: 0.5
+  }));
+  
+  const response = await fetch('http://localhost:8000/process_region_annotation', {
+    method: 'POST',
+    body: formData
+  });
+  
+  return await response.json();
+}
+
+// Usage
+const models = await listModels();
+console.log('Available models:', models);
+
+const fileInput = document.getElementById('imageInput');
+const result = await processRegion(
+  fileInput.files[0],
+  [{x: 100, y: 100}, {x: 500, y: 100}, {x: 500, y: 400}, {x: 100, y: 400}],
+  'deepliif'
+);
+
+console.log('Processing result:', result);
+```
+
+#### cURL Examples
+
+```bash
+# Get all models
+curl http://localhost:8000/models/list
+
+# Get DeepLIIF info
+curl http://localhost:8000/models/deepliif/info
+
+# Process with default settings
+curl -X POST http://localhost:8000/process_region_annotation \
+  -F "region=@tissue.jpg" \
+  -F 'mask=[{"x":100,"y":100},{"x":500,"y":100},{"x":500,"y":400},{"x":100,"y":400}]'
+
+# Process with custom hyperparameters
+curl -X POST http://localhost:8000/process_region_annotation \
+  -F "region=@tissue.jpg" \
+  -F 'mask=[{"x":100,"y":100},{"x":500,"y":100},{"x":500,"y":400},{"x":100,"y":400}]' \
+  -F "model_name=deepliif" \
+  -F 'hyperparameters={"eager_mode": false, "color_dapi": true, "positive_threshold": 0.6}'
 ```
 
 ---
