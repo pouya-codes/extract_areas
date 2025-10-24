@@ -282,14 +282,19 @@ result = model_registry.get_model("patch_classifier").process(
 ```
 
 **Output:**
-- `processed_image`: Binary overlay (positive patches = white, negative = black)
-- `overlay_image`: GradCAM heatmap (if enabled)
+- `processed_image`: 
+  - **With GradCAM enabled**: Colorful attention heatmap showing where the model focuses
+  - **With GradCAM disabled**: Binary overlay (positive patches = white, negative = black)
+- `classifier_overlay`: Binary classification mask (only included when GradCAM is enabled)
 - `scores`:
   - `num_total`: Total patches analyzed
   - `num_pos`: Number of positive patches
   - `num_neg`: Number of negative patches
   - `percent_pos`: Percentage of positive patches
   - `prob_thresh`: Threshold used
+- `metadata`:
+  - `output_type`: Either 'gradcam_heatmap' or 'classifier_mask'
+  - `gradcam_generated`: Boolean indicating if GradCAM was used
 
 **Requirements:**
 - Trained ResNet50 weights (.pth file)

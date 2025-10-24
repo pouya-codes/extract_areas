@@ -175,9 +175,11 @@ class PatchClassifierModel(BaseAIModel):
         Returns:
             Dictionary with:
                 - success (bool): Whether processing succeeded
-                - processed_image (PIL.Image): Classifier overlay showing positive/negative patches
-                - overlay_image (PIL.Image, optional): GradCAM heatmap if enabled
+                - processed_image (PIL.Image): Main output - GradCAM heatmap if enabled, 
+                  otherwise classifier overlay showing positive/negative patches
+                - classifier_overlay (PIL.Image, optional): Binary mask if GradCAM is enabled
                 - scores (dict): Classification statistics
+                - metadata (dict): Processing information including output_type
                 - error (str, optional): Error message if failed
         """
         try:
@@ -261,23 +263,39 @@ class PatchClassifierModel(BaseAIModel):
             )
             
             # Prepare result
-            result = {
-                'success': True,
-                'processed_image': classifier_overlay,  # Main output
-                'scores': scores,
-                'metadata': {
-                    'model_name': self.model_name,
-                    'model_version': self.model_version,
-                    'patch_size': self.classifier.patch_size,
-                    'batch_size': self.classifier.batch_size,
-                    'threshold': self.classifier.classifier_threshold,
-                    'gradcam_generated': self.classifier.generate_gradcam
+            # If GradCAM is enabled, use it as the main output and classifier as additional
+            # Otherwise, use classifier overlay as the main output
+            if self.classifier.generate_gradcam and gradcam_overlay is not None:
+                result = {
+                    'success': True,
+                    'processed_image': gradcam_overlay,  # GradCAM heatmap as main output
+                    'classifier_overlay': classifier_overlay,  # Classifier mask as additional
+                    'scores': scores,
+                    'metadata': {
+                        'model_name': self.model_name,
+                        'model_version': self.model_version,
+                        'patch_size': self.classifier.patch_size,
+                        'batch_size': self.classifier.batch_size,
+                        'threshold': self.classifier.classifier_threshold,
+                        'gradcam_generated': True,
+                        'output_type': 'gradcam_heatmap'
+                    }
                 }
-            }
-            
-            # Add GradCAM overlay if generated
-            if gradcam_overlay is not None:
-                result['overlay_image'] = gradcam_overlay
+            else:
+                result = {
+                    'success': True,
+                    'processed_image': classifier_overlay,  # Classifier mask as main output
+                    'scores': scores,
+                    'metadata': {
+                        'model_name': self.model_name,
+                        'model_version': self.model_version,
+                        'patch_size': self.classifier.patch_size,
+                        'batch_size': self.classifier.batch_size,
+                        'threshold': self.classifier.classifier_threshold,
+                        'gradcam_generated': False,
+                        'output_type': 'classifier_mask'
+                    }
+                }
             
             print(f"✓ Processing complete: {scores['num_total']} patches analyzed")
             print(f"  Positive: {scores['num_pos']} ({scores['percent_pos']}%)")
