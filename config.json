@@ -3,5 +3,7 @@
   "sam2_model_path": "models/sam2/sam2.1_hiera_large.pt",
   "sam2_config_path": "models/sam2/sam2.1_hiera_l.yaml",
   "default_model": "sam2",
-  "deepliif_model_path": "models/deepliif/"
+  "deepliif_model_path": "models/deepliif/",
+  "patch_classifier_model_path": "models/tumor_normal.pth",
+  "patch_classifier_enabled": true
 }

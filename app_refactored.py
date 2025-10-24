@@ -21,6 +21,7 @@ from pathlib import Path
 from models.model_registry import model_registry
 from models.deepliif_model import DeepLIIFModel
 from models.example_model import ExampleModel
+from models.patch_classifier_model import PatchClassifierModel
 
 # Import existing utilities (keep your existing imports)
 from mask_generator import MaskGenerator
@@ -76,6 +77,26 @@ def initialize_models():
     }
     model_registry.load_model("deepliif", deepliif_config)
     print("✓ Loaded DeepLIIF model")
+    
+    # Register and load PatchClassifier model (if enabled and weights exist)
+    if config.get("patch_classifier_enabled", False):
+        model_registry.register_model_class("patch_classifier", PatchClassifierModel)
+        
+        patch_classifier_path = config.get("patch_classifier_model_path")
+        if patch_classifier_path and Path(patch_classifier_path).exists():
+            patch_classifier_config = {
+                'model_path': get_absolute_path(patch_classifier_path),
+                'patch_size': 64,
+                'batch_size': 32,
+                'classifier_threshold': 0.8,
+                'generate_gradcam': False,
+                'device': 'auto'
+            }
+            model_registry.load_model("patch_classifier", patch_classifier_config)
+            print("✓ Loaded PatchClassifier model")
+        else:
+            print(f"⚠ PatchClassifier enabled but weights not found at: {patch_classifier_path}")
+            print("  Model registered but not loaded. Provide weights to use it.")
     
     # Example: Register and load another model
     # model_registry.register_model_class("your_model", YourModel)

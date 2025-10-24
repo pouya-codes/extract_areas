@@ -205,6 +205,118 @@ print(f"Model used: {result['model_used']}")
 
 ---
 
+## Built-in Models
+
+The system comes with several pre-built models ready to use:
+
+### 1. DeepLIIF Model
+
+**Model ID:** `deepliif`
+
+**Description:** Deep-Learning Inferred Multiplex ImmunoFluorescence for IHC Image Analysis. Performs multi-task analysis including DAPI segmentation, marker quantification, and cell classification.
+
+**Features:**
+- Multi-channel output (DAPI, Marker, Seg, etc.)
+- Cell segmentation and counting
+- Positive/negative cell classification
+- IHC staining analysis
+
+**Hyperparameters:**
+- `eager_mode` (bool, default: false) - Use eager mode for single GPU processing
+- `color_dapi` (bool, default: false) - Whether to color DAPI channel in output
+- `color_marker` (bool, default: false) - Whether to color marker channel in output  
+- `positive_threshold` (float, 0.0-1.0, default: 0.5) - Threshold for positive cell detection
+
+**Usage:**
+```python
+result = model_registry.get_model("deepliif").process(
+    image=tissue_image,
+    mask=tissue_mask,
+    hyperparameters={
+        'eager_mode': False,
+        'positive_threshold': 0.6
+    }
+)
+```
+
+**Output:**
+- Processed multi-channel images
+- Cell counts (total, positive, negative)
+- Percentage positive
+- Cell coordinates
+
+---
+
+### 2. PatchClassifier Model
+
+**Model ID:** `patch_classifier`
+
+**Description:** Sliding window patch-based tissue classifier using ResNet50 backbone. Analyzes tissue regions patch-by-patch to identify positive and negative areas with optional GradCAM visualization.
+
+**Features:**
+- ResNet50-based binary classification
+- Sliding window analysis with configurable patch size
+- Batch processing for efficiency
+- Optional GradCAM heatmap generation
+- Confidence-based voting
+
+**Hyperparameters:**
+- `patch_size` (int, 32-256, default: 64) - Size of sliding window patches in pixels
+- `batch_size` (int, 1-128, default: 32) - Number of patches to process in parallel
+- `classifier_threshold` (float, 0.0-1.0, default: 0.8) - Confidence threshold for classification
+- `generate_gradcam` (bool, default: false) - Generate GradCAM attention heatmap (slower)
+- `device` (choice: ['auto', 'cuda', 'cpu'], default: 'auto') - Processing device
+
+**Usage:**
+```python
+result = model_registry.get_model("patch_classifier").process(
+    image=tissue_image,
+    mask=tissue_mask,
+    hyperparameters={
+        'patch_size': 64,
+        'batch_size': 32,
+        'classifier_threshold': 0.85,
+        'generate_gradcam': True
+    }
+)
+```
+
+**Output:**
+- `processed_image`: Binary overlay (positive patches = white, negative = black)
+- `overlay_image`: GradCAM heatmap (if enabled)
+- `scores`:
+  - `num_total`: Total patches analyzed
+  - `num_pos`: Number of positive patches
+  - `num_neg`: Number of negative patches
+  - `percent_pos`: Percentage of positive patches
+  - `prob_thresh`: Threshold used
+
+**Requirements:**
+- Trained ResNet50 weights (.pth file)
+- PyTorch with torchvision
+- pytorch-grad-cam (for GradCAM visualization)
+
+**Configuration:**
+```json
+{
+  "patch_classifier_model_path": "models/resnet50_classifier.pth",
+  "patch_classifier_enabled": true
+}
+```
+
+**Training Your Own Classifier:**
+The PatchClassifier uses a standard ResNet50 architecture with a binary classification head. To train your own:
+
+1. Prepare labeled patch dataset (positive/negative examples)
+2. Fine-tune ResNet50 with your data
+3. Save weights to `.pth` file
+4. Update config.json with path
+5. Enable in config: `"patch_classifier_enabled": true`
+
+See `src/train_classifier.py` for training utilities.
+
+---
+
 ## Architecture
 
 ### System Overview
