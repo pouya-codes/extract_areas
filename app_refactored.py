@@ -89,7 +89,7 @@ def initialize_models():
                 'patch_size': 64,
                 'batch_size': 32,
                 'classifier_threshold': 0.8,
-                'generate_gradcam': False,
+                'generate_gradcam': True,
                 'device': 'auto'
             }
             model_registry.load_model("patch_classifier", patch_classifier_config)
@@ -279,12 +279,14 @@ async def process_region_annotation_api(
     region: UploadFile = File(...),
     mask: str = Form(...),
     region_id: str = Form(""),
-    model_name: str = Form("deepliif")  # NEW: Allow model selection
+    model_name: str = Form("deepliif"),  # NEW: Allow model selection
+    hyperparameters: str = Form(None)  # NEW: Model hyperparameters as JSON string
 ):
     """
     Process a region with annotation using specified AI model.
     
     NEW: Now supports multiple models via model_name parameter.
+    NEW: Accepts hyperparameters as JSON string.
     """
     # Validate region file is JPEG
     region_ct = (region.content_type or "").lower()
@@ -355,12 +357,24 @@ async def process_region_annotation_api(
     clamped = [(max(0, min(w - 1, x)), max(0, min(h - 1, y))) for x, y in annotation_points]
     draw.polygon(clamped, outline=255, fill=255)
     
+    # Parse hyperparameters if provided
+    model_hyperparameters = None
+    if hyperparameters:
+        try:
+            model_hyperparameters = json.loads(hyperparameters)
+            print(f"Received hyperparameters: {model_hyperparameters}")
+        except json.JSONDecodeError as e:
+            return JSONResponse(
+                {"status": "error", "message": f"Invalid hyperparameters JSON: {e}"},
+                status_code=400
+            )
+    
     # NEW: Use model's process method with generated mask
     result = model.process(
         image=region_image,
         mask=mask_image,
         annotation_points=None,
-        hyperparameters=None  # Could be passed from request
+        hyperparameters=model_hyperparameters
     )
     
     if not result['success']:
