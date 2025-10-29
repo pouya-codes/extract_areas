@@ -21,13 +21,7 @@ import cv2
 from torchvision import transforms
 import torchvision.models as models
 from pathlib import Path
-import sys
 from matplotlib.path import Path as MplPath
-
-# Add submodule_cv from models directory to sys.path if it exists
-submodule_cv_path = Path(__file__).parent / "submodule_cv"
-if submodule_cv_path.exists():
-    sys.path.append(str(submodule_cv_path.parent))
 
 from models.base_model import BaseAIModel
 
