@@ -79,7 +79,7 @@ class PatchClassifierModel(BaseAIModel):
             },
             'generate_gradcam': {
                 'type': 'bool',
-                'default': False,
+                'default': True,
                 'description': 'Generate GradCAM heatmap visualization (slower but provides attention maps)'
             },
             'device': {
@@ -195,76 +195,52 @@ class PatchClassifierModel(BaseAIModel):
             if not is_valid:
                 return {'success': False, 'error': error}
             
-            # Handle hyperparameter overrides by re-initializing if needed
+            # Handle hyperparameter overrides by updating classifier properties
             if hyperparameters:
-                needs_reinit = False
-                new_config = {
-                    'model_path': str(self.model_path),
-                    'patch_size': self.classifier.patch_size,
-                    'batch_size': self.classifier.batch_size,
-                    'classifier_threshold': self.classifier.classifier_threshold,
-                    'generate_gradcam': self.classifier.generate_gradcam,
-                    'device': str(self.classifier.device)
-                }
+                # Update patch_size if changed
+                if 'patch_size' in hyperparameters:
+                    new_patch_size = hyperparameters['patch_size']
+                    if new_patch_size != self.classifier.patch_size:
+                        print(f"Updating patch_size: {self.classifier.patch_size} → {new_patch_size}")
+                        self.classifier.patch_size = new_patch_size
                 
-                # Check if any hyperparameters have changed
-                if 'patch_size' in hyperparameters and hyperparameters['patch_size'] != new_config['patch_size']:
-                    new_config['patch_size'] = hyperparameters['patch_size']
-                    needs_reinit = True
+                # Update batch_size if changed
+                if 'batch_size' in hyperparameters:
+                    new_batch_size = hyperparameters['batch_size']
+                    if new_batch_size != self.classifier.batch_size:
+                        print(f"Updating batch_size: {self.classifier.batch_size} → {new_batch_size}")
+                        self.classifier.batch_size = new_batch_size
+                        # Also update GradCAM batch size if it exists
+                        if hasattr(self.classifier, 'gradient_cam') and self.classifier.gradient_cam:
+                            self.classifier.gradient_cam.batch_size = new_batch_size
                 
-                if 'batch_size' in hyperparameters and hyperparameters['batch_size'] != new_config['batch_size']:
-                    new_config['batch_size'] = hyperparameters['batch_size']
-                    needs_reinit = True
+                # Update classifier_threshold if changed
+                if 'classifier_threshold' in hyperparameters:
+                    new_threshold = hyperparameters['classifier_threshold']
+                    if new_threshold != self.classifier.classifier_threshold:
+                        print(f"Updating threshold: {self.classifier.classifier_threshold} → {new_threshold}")
+                        self.classifier.classifier_threshold = new_threshold
                 
-                if 'classifier_threshold' in hyperparameters and hyperparameters['classifier_threshold'] != new_config['classifier_threshold']:
-                    new_config['classifier_threshold'] = hyperparameters['classifier_threshold']
-                    needs_reinit = True
-                
-                if 'generate_gradcam' in hyperparameters and hyperparameters['generate_gradcam'] != new_config['generate_gradcam']:
-                    new_config['generate_gradcam'] = hyperparameters['generate_gradcam']
-                    needs_reinit = True
-                
-                if 'device' in hyperparameters and hyperparameters['device'] != new_config['device']:
-                    new_config['device'] = hyperparameters['device']
-                    needs_reinit = True
-                
-                # Re-initialize classifier with new parameters if needed
-                if needs_reinit:
-                    print(f"Re-initializing classifier with updated hyperparameters...")
-                    print(f"  Patch size: {new_config['patch_size']}")
-                    print(f"  Batch size: {new_config['batch_size']}")
-                    print(f"  Threshold: {new_config['classifier_threshold']}")
-                    print(f"  GradCAM: {new_config['generate_gradcam']}")
-                    
-                    try:
-                        # Clean up old classifier
-                        if hasattr(self.classifier, 'model'):
-                            del self.classifier.model
-                        if hasattr(self.classifier, 'gradient_cam'):
+                # Update generate_gradcam if changed
+                if 'generate_gradcam' in hyperparameters:
+                    new_gradcam = hyperparameters['generate_gradcam']
+                    if new_gradcam != self.classifier.generate_gradcam:
+                        print(f"Updating generate_gradcam: {self.classifier.generate_gradcam} → {new_gradcam}")
+                        self.classifier.generate_gradcam = new_gradcam
+                        
+                        # Initialize or cleanup GradCAM based on the flag
+                        if new_gradcam and not hasattr(self.classifier, 'gradient_cam'):
+                            # Initialize GradCAM if not present
+                            from pytorch_grad_cam import GradCAM
+                            self.classifier.gradient_cam = GradCAM(
+                                model=self.classifier.model,
+                                target_layers=[self.classifier.model.layer4[-1]]
+                            )
+                            self.classifier.gradient_cam.batch_size = self.classifier.batch_size
+                        elif not new_gradcam and hasattr(self.classifier, 'gradient_cam'):
+                            # Clean up GradCAM if no longer needed
                             del self.classifier.gradient_cam
-                        
-                        # Create new classifier with updated parameters
-                        device = torch.device(new_config['device']) if new_config['device'] not in ['auto', 'cuda', 'cpu'] else (
-                            torch.device('cuda' if torch.cuda.is_available() else 'cpu') if new_config['device'] == 'auto'
-                            else torch.device(new_config['device'])
-                        )
-                        
-                        self.classifier = PatchClassifier(
-                            model_path=new_config['model_path'],
-                            device=device,
-                            patch_size=new_config['patch_size'],
-                            batch_size=new_config['batch_size'],
-                            classifier_threshold=new_config['classifier_threshold'],
-                            generate_gradcam=new_config['generate_gradcam']
-                        )
-                        
-                        print("✓ Classifier re-initialized with new hyperparameters")
-                        
-                    except Exception as e:
-                        return {
-                            'success': False,
-                            'error': f"Failed to re-initialize classifier with new hyperparameters: {str(e)}"
-                        }
+                            self.classifier.gradient_cam = None
             
             # Convert mask to area format required by PatchClassifier
             # PatchClassifier expects: (x, y, width, height, path)

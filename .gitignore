@@ -5,6 +5,7 @@ DeepLIIF
 .vscode/
 models/deepliif
 models/sam2
+models/EC_model/
 *.sif
 bcpark*.py
 ~$*
