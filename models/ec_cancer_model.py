@@ -458,7 +458,7 @@ class ECCancerModel(BaseAIModel):
                 draw.polygon(annotation_points, fill=255)
             
             # Extract tumor patches and generate representations
-            representations = self._extract_tumor_representations(
+            representations, total_patches = self._extract_tumor_representations(
                 image,
                 mask,
                 params
@@ -472,6 +472,7 @@ class ECCancerModel(BaseAIModel):
                         'nsmp_probability': 0.0,
                         'p53_probability': 0.0,
                         'tumor_patches_found': 0,
+                        'total_processed_patches': total_patches,
                         'classification': 'insufficient_tissue'
                     },
                     'metadata': {
@@ -513,7 +514,8 @@ class ECCancerModel(BaseAIModel):
                     'p53_probability': round(p53_prob, 4),
                     'classification': classification,
                     'confidence': round(confidence, 4),
-                    'tumor_patches_found': len(representations)
+                    'tumor_patches_found': len(representations),
+                    'total_processed_patches': total_patches
                 },
                 'metadata': {
                     'processing_time': round(time.time() - start_time, 2),
@@ -535,7 +537,7 @@ class ECCancerModel(BaseAIModel):
         image: Image.Image,
         mask: Image.Image,
         params: Dict[str, Any]
-    ) -> List[torch.Tensor]:
+    ) -> Tuple[List[torch.Tensor], int]:
         """
         Extract feature representations from tumor patches.
         
@@ -545,9 +547,10 @@ class ECCancerModel(BaseAIModel):
             params: Processing parameters
         
         Returns:
-            List of feature tensors
+            Tuple of (list of feature tensors, total patches processed)
         """
         representations = []
+        total_patches = 0
         
         # Convert mask to numpy for processing
         mask_array = np.array(mask)
@@ -560,7 +563,7 @@ class ECCancerModel(BaseAIModel):
         )
         
         if len(contours) == 0:
-            return representations
+            return representations, total_patches
         
         # Process each contour
         for contour in contours:
@@ -603,6 +606,9 @@ class ECCancerModel(BaseAIModel):
                 patch = image.crop((px, py, px + patch_size, py + patch_size))
                 patches.append(self.transform(patch))
             
+            # Track total patches processed
+            total_patches += len(patches)
+            
             # Process patches in batches
             batch_size = params['batch_size']
             tumor_threshold = params['tumor_threshold']
@@ -640,7 +646,7 @@ class ECCancerModel(BaseAIModel):
                         reps = self.representation_generator(tumor_batch)
                         representations.extend(reps)
         
-        return representations
+        return representations, total_patches
     
     def _create_visualization(
         self,
