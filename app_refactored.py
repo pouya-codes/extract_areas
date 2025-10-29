@@ -22,6 +22,7 @@ from models.model_registry import model_registry
 from models.deepliif_model import DeepLIIFModel
 from models.example_model import ExampleModel
 from models.patch_classifier_model import PatchClassifierModel
+from models.ec_cancer_model import ECCancerModel
 
 # Import existing utilities (keep your existing imports)
 from mask_generator import MaskGenerator
@@ -97,6 +98,38 @@ def initialize_models():
         else:
             print(f"⚠ PatchClassifier enabled but weights not found at: {patch_classifier_path}")
             print("  Model registered but not loaded. Provide weights to use it.")
+    
+    # Register and load EC Cancer model (if enabled)
+    if config.get("ec_cancer_enabled", False):
+        model_registry.register_model_class("ec_cancer", ECCancerModel)
+        
+        # Check if all required model paths exist
+        ec_paths = {
+            'patch_classifier_model_path': config.get("ec_cancer_patch_classifier_path"),
+            'representation_generator_model_path': config.get("ec_cancer_representation_path"),
+            'varmil_model_path': config.get("ec_cancer_varmil_path")
+        }
+        
+        all_paths_exist = all(
+            path and Path(get_absolute_path(path)).exists() 
+            for path in ec_paths.values()
+        )
+        
+        if all_paths_exist:
+            ec_cancer_config = {
+                'patch_classifier_model_path': get_absolute_path(ec_paths['patch_classifier_model_path']),
+                'representation_generator_model_path': get_absolute_path(ec_paths['representation_generator_model_path']),
+                'varmil_model_path': get_absolute_path(ec_paths['varmil_model_path']),
+                'device': 'auto'
+            }
+            model_registry.load_model("ec_cancer", ec_cancer_config)
+            print("✓ Loaded EC Cancer model")
+        else:
+            missing = [k for k, v in ec_paths.items() if not v or not Path(get_absolute_path(v)).exists()]
+            print(f"⚠ EC Cancer enabled but some model weights not found:")
+            for m in missing:
+                print(f"  - {m}: {ec_paths.get(m, 'not specified')}")
+            print("  Model registered but not loaded. Provide all weights to use it.")
     
     # Example: Register and load another model
     # model_registry.register_model_class("your_model", YourModel)
