@@ -21,6 +21,7 @@ import cv2
 from torchvision import transforms
 import torchvision.models as models
 from pathlib import Path
+import sys
 from matplotlib.path import Path as MplPath
 
 from models.base_model import BaseAIModel
@@ -41,6 +42,51 @@ out_channel = {
     'efficientnet-b4': 1792, 'efficientnet-b5': 2048, 'efficientnet-b6': 2304,
     'efficientnet-b7': 2560, 'efficientnet-b8': 2816
 }
+
+feature_map = {
+    'alexnet': -2, 'vgg16': -2, 'vgg19': -2, 'vgg16_bn': -2, 'vgg19_bn': -2,
+    'resnet18': -2, 'resnet34': -2, 'resnet50': -2, 'resnext50_32x4d': -2,
+    'resnext101_32x8d': -2, 'mobilenet_v2': 0, 'mobilenet_v3_large': -2,
+    'mobilenet_v3_small': -2, 'mnasnet1_3': 0, 'shufflenet_v2_x1_5': -1,
+    'squeezenet1_1': 0
+}
+
+diff_fc_layer = ['mobilenet_v2', 'mnasnet1_3', 'shufflenet_v2_x1_5']
+
+
+class Model(nn.Module):
+    """
+    Patch classifier model wrapper.
+    Simplified version from submodule_cv.deep_models.models.
+    """
+    def __init__(self, config):
+        super().__init__()
+        self.base_model = config["base_model"]
+        self.num_classes = config["num_subtypes"]
+        self.pretrained = config["pretrained"]
+        
+        # Load base model
+        model = getattr(models, self.base_model)
+        model = model(pretrained=self.pretrained)
+        
+        # Modify last layer for classification
+        num_features = model.fc.in_features
+        model.fc = torch.nn.Linear(num_features, self.num_classes)
+        
+        # Separate feature extractor and classifier
+        self.feature_extract = nn.Sequential(
+            *list(model.children())[:feature_map[self.base_model]]
+        )
+        self.classifier = nn.Sequential(
+            *list(model.children())[feature_map[self.base_model]:]
+        )
+    
+    def forward(self, x):
+        feature = self.feature_extract(x)
+        feature_pool = self.classifier[0](feature)
+        flatten_feature = torch.flatten(feature_pool, 1)
+        out = self.classifier[1:](flatten_feature)
+        return out
 
 feature_map = {
     'alexnet': -2, 'vgg16': -2, 'vgg19': -2, 'vgg16_bn': -2, 'vgg19_bn': -2,
@@ -122,6 +168,73 @@ class VarMIL(nn.Module):
         M_V = torch.cat((M, V), dim=1)
         out = self.classifier(M_V)
         return A, out
+
+
+# ============================================================================
+# Custom Module Remapper for Pickle Loading
+# ============================================================================
+
+class ModuleRemapper:
+    """
+    Helper class to remap module paths during unpickling.
+    This allows loading models that were saved with different module paths.
+    """
+    @staticmethod
+    def remap_storage(storage, location):
+        return storage
+    
+    @staticmethod
+    def setup_module_aliases():
+        """
+        Create module aliases to handle models saved with submodule_cv.
+        """
+        # Create a fake submodule_cv package structure
+        if 'submodule_cv' not in sys.modules:
+            import types
+            
+            # Create the package hierarchy
+            submodule_cv = types.ModuleType('submodule_cv')
+            submodule_cv.__package__ = 'submodule_cv'
+            submodule_cv.__path__ = []  # Make it a package
+            
+            submodule_cv_models = types.ModuleType('submodule_cv.models')
+            submodule_cv_models.__package__ = 'submodule_cv.models'
+            
+            submodule_cv_deep_models = types.ModuleType(
+                'submodule_cv.deep_models'
+            )
+            submodule_cv_deep_models.__package__ = 'submodule_cv.deep_models'
+            submodule_cv_deep_models.__path__ = []  # Make it a package
+            
+            # Add submodule_cv.deep_models.models
+            submodule_cv_deep_models_models = types.ModuleType(
+                'submodule_cv.deep_models.models'
+            )
+            submodule_cv_deep_models_models.__package__ = (
+                'submodule_cv.deep_models.models'
+            )
+            
+            # Add our embedded models to all the fake modules
+            submodule_cv_models.VanillaModel = VanillaModel
+            submodule_cv_models.DeepModel = VanillaModel
+            submodule_cv_deep_models.VanillaModel = VanillaModel
+            submodule_cv_deep_models.DeepModel = VanillaModel
+            submodule_cv_deep_models_models.VanillaModel = VanillaModel
+            submodule_cv_deep_models_models.DeepModel = VanillaModel
+            submodule_cv_deep_models_models.Model = Model
+            
+            # Register all modules
+            sys.modules['submodule_cv'] = submodule_cv
+            sys.modules['submodule_cv.models'] = submodule_cv_models
+            sys.modules['submodule_cv.deep_models'] = submodule_cv_deep_models
+            sys.modules['submodule_cv.deep_models.models'] = (
+                submodule_cv_deep_models_models
+            )
+            
+            # Link them as attributes
+            submodule_cv.models = submodule_cv_models
+            submodule_cv.deep_models = submodule_cv_deep_models
+            submodule_cv_deep_models.models = submodule_cv_deep_models_models
 
 
 # ============================================================================
@@ -209,6 +322,9 @@ class ECCancerModel(BaseAIModel):
         
         self.device = torch.device(device_str)
         print(f"EC Cancer model using device: {self.device}")
+        
+        # Setup module aliases for unpickling models with submodule_cv references
+        ModuleRemapper.setup_module_aliases()
         
         # Initialize patch classifier (ResNet50)
         try:
