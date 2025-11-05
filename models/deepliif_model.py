@@ -103,7 +103,8 @@ class DeepLIIFModel(BaseAIModel):
             if not is_valid:
                 return {
                     'success': False,
-                    'error': error
+                    'error': error,
+                    'str_result': f'Error: {error}'
                 }
             
             # Merge hyperparameters
@@ -131,7 +132,8 @@ class DeepLIIFModel(BaseAIModel):
             if overlay_image is None:
                 return {
                     'success': False,
-                    'error': 'Model did not produce SegRefined output'
+                    'error': 'Model did not produce SegRefined output',
+                    'str_result': 'Error: No segmentation output'
                 }
             
             # Postprocess: white out masked regions
@@ -147,9 +149,28 @@ class DeepLIIFModel(BaseAIModel):
             if 'cell_coords' in scores:
                 del scores['cell_coords']
             
+            # Create str_result based on available scores
+            str_result_parts = []
+            if 'total_cells' in scores:
+                str_result_parts.append(
+                    f"Total cells: {scores['total_cells']}")
+            if 'positive_cells' in scores:
+                str_result_parts.append(
+                    f"Positive: {scores['positive_cells']}")
+            if 'negative_cells' in scores:
+                str_result_parts.append(
+                    f"Negative: {scores['negative_cells']}")
+            
+            # Default if no specific scores available
+            if not str_result_parts:
+                str_result = "DeepLIIF segmentation complete"
+            else:
+                str_result = ", ".join(str_result_parts)
+            
             return {
                 'processed_image': result_image,
                 'scores': scores,
+                'str_result': str_result,
                 'success': True,
                 'metadata': {
                     'model': self.model_name,
@@ -160,7 +181,8 @@ class DeepLIIFModel(BaseAIModel):
         except Exception as e:
             return {
                 'success': False,
-                'error': f"Processing failed: {str(e)}"
+                'error': f"Processing failed: {str(e)}",
+                'str_result': f'Processing Error: {str(e)}'
             }
     
     def get_hyperparameters_schema(self) -> Dict[str, Any]:

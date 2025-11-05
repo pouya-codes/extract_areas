@@ -187,13 +187,18 @@ class PatchClassifierModel(BaseAIModel):
             if not self._is_initialized or self.classifier is None:
                 return {
                     'success': False,
-                    'error': 'Model not initialized. Call initialize() first.'
+                    'error': 'Model not initialized. Call initialize() first.',
+                    'str_result': 'Error: Model not initialized'
                 }
             
             # Validate inputs
             is_valid, error = self.validate_input(image, mask)
             if not is_valid:
-                return {'success': False, 'error': error}
+                return {
+                    'success': False,
+                    'error': error,
+                    'str_result': f'Error: {error}'
+                }
             
             # Handle hyperparameter overrides by updating classifier properties
             if hyperparameters:
@@ -250,7 +255,8 @@ class PatchClassifierModel(BaseAIModel):
             if mask is None and annotation_points is None:
                 return {
                     'success': False,
-                    'error': 'Either mask or annotation_points is required for PatchClassifier'
+                    'error': 'Either mask or annotation_points is required for PatchClassifier',
+                    'str_result': 'Error: No mask or annotation provided'
                 }
             
             # Convert mask to polygon if not provided
@@ -266,7 +272,8 @@ class PatchClassifierModel(BaseAIModel):
                 if len(x_indices) == 0:
                     return {
                         'success': False,
-                        'error': 'Mask is empty - no tissue region to process'
+                        'error': 'Mask is empty - no tissue region to process',
+                        'str_result': 'Error: Empty mask'
                     }
                 
                 x_min, x_max = x_indices.min(), x_indices.max()
@@ -309,6 +316,10 @@ class PatchClassifierModel(BaseAIModel):
                     'processed_image': gradcam_overlay,  # GradCAM heatmap as main output
                     'classifier_overlay': classifier_overlay,  # Classifier mask as additional
                     'scores': scores,
+                    'str_result': (
+                        f"Positive: {scores['num_pos']}/{scores['num_total']} "
+                        f"patches ({scores['percent_pos']}%)"
+                    ),
                     'metadata': {
                         'model_name': self.model_name,
                         'model_version': self.model_version,
@@ -324,6 +335,10 @@ class PatchClassifierModel(BaseAIModel):
                     'success': True,
                     'processed_image': classifier_overlay,  # Classifier mask as main output
                     'scores': scores,
+                    'str_result': (
+                        f"Positive: {scores['num_pos']}/{scores['num_total']} "
+                        f"patches ({scores['percent_pos']}%)"
+                    ),
                     'metadata': {
                         'model_name': self.model_name,
                         'model_version': self.model_version,
@@ -346,7 +361,8 @@ class PatchClassifierModel(BaseAIModel):
             traceback.print_exc()
             return {
                 'success': False,
-                'error': f"Processing failed: {str(e)}"
+                'error': f"Processing failed: {str(e)}",
+                'str_result': f'Processing Error: {str(e)}'
             }
     
     def get_hyperparameters_schema(self) -> Dict[str, Any]:

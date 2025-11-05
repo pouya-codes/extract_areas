@@ -89,6 +89,7 @@ class BaseAIModel(ABC):
             Dictionary containing:
                 - 'processed_image': PIL Image with model output/overlay
                 - 'scores': Dict of quantitative metrics (e.g., {'positive_cells': 42})
+                - 'str_result': String summary for frontend display (REQUIRED)
                 - 'metadata': Optional dict with additional information
                 - 'success': Boolean indicating if processing succeeded
                 - 'error': Optional error message if processing failed
@@ -102,6 +103,7 @@ class BaseAIModel(ABC):
                     'negative_cells': 108,
                     'positivity_rate': 0.28
                 },
+                'str_result': 'Positive: 42/150 cells (28.0%)',
                 'metadata': {
                     'processing_time': 2.34,
                     'model_version': '1.0.0'

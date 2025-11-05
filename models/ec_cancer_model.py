@@ -440,7 +440,8 @@ class ECCancerModel(BaseAIModel):
                     'success': False,
                     'error': error_msg,
                     'processed_image': None,
-                    'scores': {}
+                    'scores': {},
+                    'str_result': f'Error: {error_msg}'
                 }
             
             # Generate mask from annotation points or use provided mask
@@ -449,7 +450,8 @@ class ECCancerModel(BaseAIModel):
                     'success': False,
                     'error': 'Either mask or annotation_points must be provided',
                     'processed_image': None,
-                    'scores': {}
+                    'scores': {},
+                    'str_result': 'Error: No mask or annotation provided'
                 }
             elif annotation_points is not None:
                 # Create mask from annotation points
@@ -475,6 +477,10 @@ class ECCancerModel(BaseAIModel):
                         'total_processed_patches': total_patches,
                         'classification': 'insufficient_tissue'
                     },
+                    'str_result': (
+                        f'Insufficient Tissue: 0 tumor patches '
+                        f'({total_patches} analyzed)'
+                    ),
                     'metadata': {
                         'processing_time': time.time() - start_time,
                         'message': 'No tumor patches detected in region'
@@ -517,6 +523,11 @@ class ECCancerModel(BaseAIModel):
                     'tumor_patches_found': len(representations),
                     'total_processed_patches': total_patches
                 },
+                'str_result': (
+                    f'{classification}: {len(representations)} tumor patches '
+                    f'({total_patches} analyzed), '
+                    f'Confidence: {round(confidence * 100, 1)}%'
+                ),
                 'metadata': {
                     'processing_time': round(time.time() - start_time, 2),
                     'model_version': self.model_version,
@@ -529,7 +540,8 @@ class ECCancerModel(BaseAIModel):
                 'success': False,
                 'error': f"Processing failed: {str(e)}",
                 'processed_image': None,
-                'scores': {}
+                'scores': {},
+                'str_result': f'Processing Error: {str(e)}'
             }
     
     def _extract_tumor_representations(
