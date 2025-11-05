@@ -426,6 +426,7 @@ async def process_region_annotation_api(
         "status": "success",
         "processed_image_base64": img_base64,
         "score": result['scores'],
+        "str_result": result.get('str_result', 'Processing complete'),
         "region_id": region_id,
         "model_used": model_name,
         "model_version": model.model_version
@@ -497,6 +498,7 @@ async def process_region_api(
         "status": "success",
         "processed_image_base64": img_base64,
         "score": result['scores'],
+        "str_result": result.get('str_result', 'Processing complete'),
         "model_used": model_name
     }
 
