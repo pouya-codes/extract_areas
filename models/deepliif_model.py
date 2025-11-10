@@ -151,15 +151,15 @@ class DeepLIIFModel(BaseAIModel):
             
             # Create str_result based on available scores
             str_result_parts = []
-            if 'total_cells' in scores:
+            if 'num_total' in scores:
                 str_result_parts.append(
-                    f"Total cells: {scores['total_cells']}")
-            if 'positive_cells' in scores:
+                    f"Total cells: {scores['num_total']}")
+            if 'num_pos' in scores:
                 str_result_parts.append(
-                    f"Positive: {scores['positive_cells']}")
-            if 'negative_cells' in scores:
+                    f"Positive: {scores['num_pos']}")
+            if 'num_neg' in scores:
                 str_result_parts.append(
-                    f"Negative: {scores['negative_cells']}")
+                    f"Negative: {scores['num_neg']}")
             
             # Default if no specific scores available
             if not str_result_parts:
