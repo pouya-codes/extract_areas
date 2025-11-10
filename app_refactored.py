@@ -758,4 +758,14 @@ def shutdown_event():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    
+    # Run with hot-reload enabled for development
+    # This will automatically restart the server when code changes are detected
+    uvicorn.run(
+        "app_refactored:app",  # Use string format for reload to work
+        host="0.0.0.0",
+        port=8000,
+        reload=True,  # Enable auto-reload on file changes
+        reload_dirs=[".", "models", "src"],  # Watch these directories
+        log_level="info"
+    )
