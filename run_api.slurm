@@ -3,20 +3,21 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
-#SBATCH --gres=gpu:4              # remove if no GPU needed
+#SBATCH --gres=gpu:1              # remove if no GPU needed
 #SBATCH --time=19-10:00:00
 #SBATCH --output=api_job.out
 #SBATCH --error=api_job.err
-#SBATCH -p gpu2080
-#SBATCH -w dlhost03
-#SBATCH --mem 6000
+#SBATCH -p gpu3090
+# SBATCH -w dlhost03
+#SBATCH --mem 4000
 
-# Load your environment
-# bash /projects/ovcare/users/pouya_ahmadvand/miniconda3/etc/profile.d/conda.sh
-#source activate fastapi_env        # or conda env
+source /projects/ovcare/users/pouya_ahmadvand/miniconda3/etc/profile.d/conda.sh
+conda activate fastapi_env        
+
+cd /projects/ovcare/users/pouya_ahmadvand/develop/API/extract_areas
 
 # Get the compute node's hostname
 HOST=$(hostname)
 echo "API running on $HOST"
 # Run FastAPI, binding to the node's hostname
-python -m uvicorn app:app --host 127.0.0.1 --port 8001 --reload
+python app_refactored.py 
