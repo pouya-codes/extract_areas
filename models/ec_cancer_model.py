@@ -51,8 +51,6 @@ feature_map = {
     'squeezenet1_1': 0
 }
 
-diff_fc_layer = ['mobilenet_v2', 'mnasnet1_3', 'shufflenet_v2_x1_5']
-
 
 class Model(nn.Module):
     """
@@ -88,14 +86,6 @@ class Model(nn.Module):
         out = self.classifier[1:](flatten_feature)
         return out
 
-feature_map = {
-    'alexnet': -2, 'vgg16': -2, 'vgg19': -2, 'vgg16_bn': -2, 'vgg19_bn': -2,
-    'resnet18': -2, 'resnet34': -2, 'resnet50': -2, 'resnext50_32x4d': -2,
-    'resnext101_32x8d': -2, 'mobilenet_v2': 0, 'mobilenet_v3_large': -2,
-    'mobilenet_v3_small': -2, 'mnasnet1_3': 0, 'shufflenet_v2_x1_5': -1,
-    'squeezenet1_1': 0
-}
-
 
 class VanillaModel(nn.Module):
     """Feature extraction model using various CNN backbones."""
@@ -103,9 +93,8 @@ class VanillaModel(nn.Module):
     def __init__(self, backbone):
         super(VanillaModel, self).__init__()
         self.backbone = backbone
-        model = getattr(models, self.backbone)
-        model = model(pretrained=False)
-        # Separate feature and classifier layers
+        model = getattr(models, self.backbone)(pretrained=False)
+        
         if feature_map[self.backbone] == 0:
             self.feature_extract = nn.Sequential(*list(model.children())[0])
         else:
@@ -116,8 +105,7 @@ class VanillaModel(nn.Module):
     def forward(self, x):
         feature = self.feature_extract(x)
         feature = F.adaptive_avg_pool2d(feature, 1)
-        out = torch.flatten(feature, 1)
-        return out
+        return torch.flatten(feature, 1)
 
 
 class VarMIL(nn.Module):
@@ -284,6 +272,9 @@ class ECCancerModel(BaseAIModel):
             'tumor_threshold': 0.9,
             'generate_visualization': True
         }
+        
+        # Storage for Grad-CAM
+        self.gradient_cam = None
     
     def initialize(self, config: Dict[str, Any]) -> None:
         """
@@ -291,8 +282,8 @@ class ECCancerModel(BaseAIModel):
         
         Args:
             config: Dictionary with keys:
-                - patch_classifier_model_path: Path to tumor classifier weights
-                - representation_generator_model_path: Path to feature extractor weights
+                - patch_classifier_model_path: Path to tumor classifier
+                - representation_generator_model_path: Path to features
                 - varmil_model_path: Path to VarMIL model weights
                 - device: 'cuda' or 'cpu' (default: auto-detect)
         
@@ -323,7 +314,7 @@ class ECCancerModel(BaseAIModel):
         self.device = torch.device(device_str)
         print(f"EC Cancer model using device: {self.device}")
         
-        # Setup module aliases for unpickling models with submodule_cv references
+        # Setup module aliases for unpickling
         ModuleRemapper.setup_module_aliases()
         
         # Initialize patch classifier (ResNet50)
@@ -335,6 +326,21 @@ class ECCancerModel(BaseAIModel):
             )
             self.patch_classifier = model.model.to(self.device)
             self.patch_classifier.eval()
+            
+            # Initialize Grad-CAM if needed
+            if self.hyperparameters.get('generate_gradcam', True):
+                try:
+                    from pytorch_grad_cam import GradCAM
+                    # For Model class, layer4 is in feature_extract
+                    target_layer = self.patch_classifier.feature_extract[-1]
+                    self.gradient_cam = GradCAM(
+                        model=self.patch_classifier,
+                        target_layers=[target_layer]
+                    )
+                    print("✓ Initialized Grad-CAM")
+                except ImportError:
+                    print("⚠ pytorch_grad_cam not installed")
+                    self.gradient_cam = None
             
             # Define preprocessing transforms
             resize_size = config.get('resize_size', 512)
@@ -460,11 +466,12 @@ class ECCancerModel(BaseAIModel):
                 draw.polygon(annotation_points, fill=255)
             
             # Extract tumor patches and generate representations
-            representations, total_patches = self._extract_tumor_representations(
+            result = self._extract_tumor_representations(
                 image,
                 mask,
                 params
             )
+            representations, total_patches, gradcam_overlay = result
             
             if len(representations) == 0:
                 return {
@@ -502,7 +509,10 @@ class ECCancerModel(BaseAIModel):
             confidence = max(nsmp_prob, p53_prob)
             
             # Generate visualization if requested
-            if params['generate_visualization']:
+            if params.get('generate_gradcam', False) and gradcam_overlay:
+                # Use Grad-CAM overlay as visualization
+                visualization = gradcam_overlay
+            elif params['generate_visualization']:
                 visualization = self._create_visualization(
                     image,
                     mask,
@@ -549,7 +559,7 @@ class ECCancerModel(BaseAIModel):
         image: Image.Image,
         mask: Image.Image,
         params: Dict[str, Any]
-    ) -> Tuple[List[torch.Tensor], int]:
+    ) -> Tuple[List[torch.Tensor], int, Optional[Image.Image]]:
         """
         Extract feature representations from tumor patches.
         
@@ -559,10 +569,23 @@ class ECCancerModel(BaseAIModel):
             params: Processing parameters
         
         Returns:
-            Tuple of (list of feature tensors, total patches processed)
+            Tuple of (list of feature tensors, total patches,
+            Grad-CAM overlay if enabled)
         """
         representations = []
         total_patches = 0
+        gradcam_overlay = None
+        
+        # Initialize Grad-CAM canvas if requested
+        if params.get('generate_gradcam', False):
+            gradcam_canvas = np.zeros(
+                (image.height, image.width),
+                dtype=np.float32
+            )
+            gradcam_count = np.zeros(
+                (image.height, image.width),
+                dtype=np.float32
+            )
         
         # Convert mask to numpy for processing
         mask_array = np.array(mask)
@@ -575,7 +598,7 @@ class ECCancerModel(BaseAIModel):
         )
         
         if len(contours) == 0:
-            return representations, total_patches
+            return representations, total_patches, gradcam_overlay
         
         # Process each contour
         for contour in contours:
@@ -606,6 +629,7 @@ class ECCancerModel(BaseAIModel):
             
             # Extract and classify patches
             patches = []
+            patch_coords = []
             for point, inside in zip(grid_points, inside_points):
                 if not inside:
                     continue
@@ -617,6 +641,7 @@ class ECCancerModel(BaseAIModel):
                 
                 patch = image.crop((px, py, px + patch_size, py + patch_size))
                 patches.append(self.transform(patch))
+                patch_coords.append((int(px), int(py)))
             
             # Track total patches processed
             total_patches += len(patches)
@@ -627,38 +652,120 @@ class ECCancerModel(BaseAIModel):
             
             for i in range(0, len(patches), batch_size):
                 batch_patches = patches[i:i + batch_size]
+                batch_coords = patch_coords[i:i + batch_size]
                 
                 if not batch_patches:
                     continue
                 
                 batch_tensor = torch.stack(batch_patches).to(self.device)
                 
+                # First pass: classify patches (always in eval mode)
                 with torch.no_grad():
                     # Classify patches
                     outputs = self.patch_classifier(batch_tensor)
                     probs = torch.softmax(outputs, dim=1)
                     pred_probs = probs.cpu().numpy()
                     labels = np.argmax(pred_probs, axis=1)
-                    
-                    # Identify tumor patches
-                    tumor_positive = (
-                        (np.max(pred_probs, axis=1) > tumor_threshold) &
-                        (labels == 1)
-                    )
-                    
-                    # Extract tumor patches
-                    tumor_patches = [
-                        patch for patch, is_tumor in 
-                        zip(batch_tensor, tumor_positive) if is_tumor
+                
+                # Identify tumor patches
+                tumor_positive = (
+                    (np.max(pred_probs, axis=1) > tumor_threshold) &
+                    (labels == 1)
+                )
+                
+                # Generate Grad-CAM for tumor patches
+                if params.get('generate_gradcam', False) and self.gradient_cam:
+                    # Get indices of tumor patches
+                    tumor_indices = [
+                        idx for idx, is_tumor in enumerate(tumor_positive)
+                        if is_tumor
                     ]
                     
-                    # Generate representations for tumor patches
-                    if tumor_patches:
-                        tumor_batch = torch.stack(tumor_patches)
+                    if tumor_indices:
+                        # Process tumor patches with Grad-CAM
+                        tumor_batch = batch_tensor[tumor_indices]
+                        
+                        # Define target class (tumor = 1)
+                        from pytorch_grad_cam.utils.model_targets import (
+                            ClassifierOutputTarget
+                        )
+                        targets = [ClassifierOutputTarget(1)] * len(tumor_indices)
+                        
+                        # Generate Grad-CAM heatmaps
+                        try:
+                            grayscale_cams = self.gradient_cam(
+                                input_tensor=tumor_batch,
+                                targets=targets
+                            )
+                            
+                            # Place each heatmap on canvas
+                            for local_idx, batch_idx in enumerate(tumor_indices):
+                                coord = batch_coords[batch_idx]
+                                heatmap = grayscale_cams[local_idx]
+                                
+                                # Resize heatmap to patch size
+                                heatmap_resized = cv2.resize(
+                                    heatmap,
+                                    (patch_size, patch_size),
+                                    interpolation=cv2.INTER_LINEAR
+                                )
+                                
+                                # Place heatmap on canvas
+                                x, y = coord
+                                gradcam_canvas[
+                                    y:y + patch_size,
+                                    x:x + patch_size
+                                ] += heatmap_resized
+                                gradcam_count[
+                                    y:y + patch_size,
+                                    x:x + patch_size
+                                ] += 1.0
+                        except Exception as e:
+                            print(f"Warning: Grad-CAM failed: {e}")
+                
+                # Extract tumor patches for representation
+                tumor_patches = [
+                    patch for patch, is_tumor in
+                    zip(batch_tensor, tumor_positive) if is_tumor
+                ]
+                
+                # Generate representations for tumor patches
+                if tumor_patches:
+                    tumor_batch = torch.stack(tumor_patches)
+                    with torch.no_grad():
                         reps = self.representation_generator(tumor_batch)
                         representations.extend(reps)
         
-        return representations, total_patches
+        # Create Grad-CAM overlay image if requested
+        if params.get('generate_gradcam', False):
+            # Check if any heatmaps were generated
+            if np.any(gradcam_count > 0):
+                # Average overlapping heatmaps
+                mask_nonzero = gradcam_count > 0
+                gradcam_canvas[mask_nonzero] /= gradcam_count[mask_nonzero]
+                
+                # Apply colormap
+                gradcam_normalized = (gradcam_canvas * 255).astype(np.uint8)
+                gradcam_colored = cv2.applyColorMap(
+                    gradcam_normalized,
+                    cv2.COLORMAP_JET
+                )
+                gradcam_colored = cv2.cvtColor(
+                    gradcam_colored,
+                    cv2.COLOR_BGR2RGB
+                )
+                
+                # Create transparent overlay (make black areas transparent)
+                gradcam_rgba = np.zeros(
+                    (image.height, image.width, 4),
+                    dtype=np.uint8
+                )
+                gradcam_rgba[:, :, :3] = gradcam_colored
+                gradcam_rgba[:, :, 3] = (gradcam_canvas > 0.01) * 255
+                
+                gradcam_overlay = Image.fromarray(gradcam_rgba, 'RGBA')
+        
+        return representations, total_patches, gradcam_overlay
     
     def _create_visualization(
         self,
@@ -761,6 +868,14 @@ class ECCancerModel(BaseAIModel):
                 'type': 'bool',
                 'default': True,
                 'description': 'Generate visualization with classification overlay'
+            },
+            'generate_gradcam': {
+                'type': 'bool',
+                'default': True,
+                'description': (
+                    'Generate Grad-CAM heatmap showing '
+                    'model attention on tumor regions'
+                )
             }
         }
     
@@ -768,6 +883,8 @@ class ECCancerModel(BaseAIModel):
         """
         Clean up GPU memory and resources.
         """
+        if self.gradient_cam is not None:
+            del self.gradient_cam
         if self.patch_classifier is not None:
             del self.patch_classifier
         if self.representation_generator is not None:

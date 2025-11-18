@@ -11,6 +11,8 @@
 # SBATCH -w dlhost03
 #SBATCH --mem 4000
 
+# ssh -L 8001:localhost:8001 -J poahmadvand@ssh.bcgsc.ca,poahmadvand@slurmgpu poahmadvand@dlhost03
+
 source /projects/ovcare/users/pouya_ahmadvand/miniconda3/etc/profile.d/conda.sh
 conda activate fastapi_env        
 
