@@ -1,13 +1,50 @@
 {
+  "maskgenerator_enabled": false,
   "sam_model_path": "TBD",
   "sam2_model_path": "models/sam2/sam2.1_hiera_large.pt",
   "sam2_config_path": "models/sam2/sam2.1_hiera_l.yaml",
   "default_model": "sam2",
+  "deepliif_enabled": false,
   "deepliif_model_path": "models/deepliif/",
   "patch_classifier_model_path": "models/tumor_normal.pth",
-  "patch_classifier_enabled": true,
-  "ec_cancer_enabled": true,
+  "patch_classifier_enabled": false,
+  "ec_cancer_enabled": false,
   "ec_cancer_patch_classifier_path": "models/EC_model/tumor_normal.pt",
   "ec_cancer_representation_path": "models/EC_model/representation.pth",
-  "ec_cancer_varmil_path": "models/EC_model/VarMIL.pth"
+  "ec_cancer_varmil_path": "models/EC_model/VarMIL.pth",
+  "hovernet_enabled": true,
+  "hovernet_models": {
+    "pannuke": {
+      "checkpoint": "models/hovernet_checkpoints/hovernet_fast_pannuke_type_tf2pytorch.tar",
+      "type_info": "models/hovernet_checkpoints/type_info_pannuke.json",
+      "nr_types": 6,
+      "mode": "fast",
+      "description": "PanNuke - 6 nucleus types (Neoplastic, Inflammatory, Connective, Dead, Epithelial, Background)"
+    },
+    "consep": {
+      "checkpoint": "models/hovernet_checkpoints/hovernet_original_consep_type_tf2pytorch.tar",
+      "type_info": "models/hovernet_checkpoints/type_info_consep.json",
+      "nr_types": 4,
+      "mode": "original",
+      "description": "CoNSeP - 4 nucleus types (Inflammatory, Epithelial, Spindle, Miscellaneous)"
+    },
+    "monusac": {
+      "checkpoint": "models/hovernet_checkpoints/hovernet_original_monusac_type_tf2pytorch.tar",
+      "type_info": "models/hovernet_checkpoints/type_info_monusac.json",
+      "nr_types": 4,
+      "mode": "original",
+      "description": "MoNuSAC - 4 nucleus types (Epithelial, Lymphocyte, Macrophage, Neutrophil)"
+    },
+    "kumar": {
+      "checkpoint": "models/hovernet_checkpoints/hovernet_original_kumar_notype_tf2pytorch.tar",
+      "type_info": null,
+      "nr_types": 0,
+      "mode": "original",
+      "description": "Kumar - Segmentation only (no type classification)"
+    }
+  },
+  "hovernet_default_variant": "pannuke",
+  "hovernet_device": "cuda",
+  "hovernet_gpu_ids": [0],
+  "hovernet_batch_size": 8
 }

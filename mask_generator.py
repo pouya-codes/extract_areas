@@ -55,6 +55,9 @@ class MaskGenerator:
         # Read image from BytesIO object
         image_bytes.seek(0)
         file_bytes = np.frombuffer(image_bytes.read(), np.uint8)
+        # save image for debugging
+        print("Saving debug image as debug_image.png")
+        cv2.imwrite("debug_image.png", cv2.imdecode(file_bytes, cv2.IMREAD_COLOR))
         thumb_np = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
         thumb_np = cv2.cvtColor(thumb_np, cv2.COLOR_BGR2RGB)
         masks = self.mask_generator.generate(thumb_np)

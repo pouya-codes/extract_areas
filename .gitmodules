@@ -1,3 +1,6 @@
 [submodule "module/DeepLiff"]
 	path = module/DeepLiff
 	url = git@github.com:pouya-codes/DeepLIIF.git
+[submodule "models/hovernet"]
+	path = models/hovernet
+	url = https://github.com/vqdang/hover_net.git

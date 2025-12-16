@@ -23,6 +23,7 @@ from models.deepliif_model import DeepLIIFModel
 from models.example_model import ExampleModel
 from models.patch_classifier_model import PatchClassifierModel
 from models.ec_cancer_model import ECCancerModel
+from models.hovernet_model import HoVerNetModel
 
 # Import existing utilities (keep your existing imports)
 from mask_generator import MaskGenerator
@@ -52,11 +53,15 @@ def init_mask_generator():
 app = FastAPI()
 
 # Initialize mask generator (existing functionality)
-mask_gen = init_mask_generator()
+if config.get("maskgenerator_enabled", False):
+    mask_gen = init_mask_generator()
+else:
+    mask_gen = None 
 
 # ============================================================================
 # NEW: Initialize AI Models using Registry System
 # ============================================================================
+
 
 def initialize_models():
     """
@@ -66,18 +71,19 @@ def initialize_models():
     1. Register the model class
     2. Load the model with configuration
     """
-    # Register DeepLIIF model
-    model_registry.register_model_class("deepliif", DeepLIIFModel)
-    
-    # Load DeepLIIF with configuration
-    deepliif_config = {
-        'model_dir': get_absolute_path(config["deepliif_model_path"]),
-        'tile_size': 256,
-        'post_processing': True,
-        'gpu_ids': []
-    }
-    model_registry.load_model("deepliif", deepliif_config)
-    print("✓ Loaded DeepLIIF model")
+    if config.get("deepliif_enabled", False):
+        # Register DeepLIIF model
+        model_registry.register_model_class("deepliif", DeepLIIFModel)
+        
+        # Load DeepLIIF with configuration
+        deepliif_config = {
+            'model_dir': get_absolute_path(config["deepliif_model_path"]),
+            'tile_size': 256,
+            'post_processing': True,
+            'gpu_ids': []
+        }
+        model_registry.load_model("deepliif", deepliif_config)
+        print("✓ Loaded DeepLIIF model")
     
     # Register and load PatchClassifier model (if enabled and weights exist)
     if config.get("patch_classifier_enabled", False):
@@ -131,11 +137,32 @@ def initialize_models():
                 print(f"  - {m}: {ec_paths.get(m, 'not specified')}")
             print("  Model registered but not loaded. Provide all weights to use it.")
     
-    # Example: Register and load another model
-    # model_registry.register_model_class("your_model", YourModel)
-    # your_model_config = {'model_path': config["your_model_path"]}
-    # model_registry.load_model("your_model", your_model_config)
-    # print("✓ Loaded your model")
+    # Register and load HoVer-Net model (if enabled)
+    if config.get("hovernet_enabled", False):
+        model_registry.register_model_class("hovernet", HoVerNetModel)
+        
+        # Use new config structure with model_variant
+        default_variant = config.get("hovernet_default_variant", "pannuke")
+        hovernet_config = {
+            'model_variant': default_variant,
+            'device': config.get("hovernet_device", "cuda"),
+            'gpu_ids': config.get("hovernet_gpu_ids", [0]),
+            'batch_size': config.get("hovernet_batch_size", 8)
+        }
+        
+        # Check if the default variant's checkpoint exists
+        hovernet_models = config.get("hovernet_models", {})
+        if default_variant in hovernet_models:
+            checkpoint_path = hovernet_models[default_variant].get('checkpoint')
+            if checkpoint_path and Path(get_absolute_path(checkpoint_path)).exists():
+                model_registry.load_model("hovernet", hovernet_config)
+                print(f"✓ Loaded HoVer-Net model (variant: {default_variant})")
+            else:
+                print(f"⚠ HoVer-Net enabled but checkpoint not found: {checkpoint_path}")
+                print("  Model registered but not loaded. Provide weights to use it.")
+        else:
+            print(f"⚠ HoVer-Net enabled but variant '{default_variant}' not found in config")
+            print("  Model registered but not loaded. Configure hovernet_models in config.json.")
 
 
 # Initialize models at startup
@@ -151,6 +178,11 @@ async def generate_mask_api(
     file: UploadFile = File(...),
     is_tma: bool = Form(False)
 ):
+    if mask_gen is None:
+        return JSONResponse(
+            {"status": "error", "message": "Mask generator is not enabled."},
+            status_code=500
+        )
     """Generate mask from slide image."""
     # Check if it's a PNG file
     is_png = False
@@ -403,12 +435,21 @@ async def process_region_annotation_api(
             )
     
     # NEW: Use model's process method with generated mask
-    result = model.process(
-        image=region_image,
-        mask=mask_image,
-        annotation_points=None,
-        hyperparameters=model_hyperparameters
-    )
+    try:
+        result = model.process(
+            image=region_image,
+            mask=mask_image,
+            annotation_points=None,
+            hyperparameters=model_hyperparameters
+        )
+    except Exception as e:
+        print(f"ERROR: Model {model_name} failed to process region: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(
+            {"status": "error", "message": f"Model processing failed: {str(e)}"},
+            status_code=500
+        )
     
     if not result['success']:
         return JSONResponse(
@@ -421,7 +462,9 @@ async def process_region_annotation_api(
     result['processed_image'].save(buffer, format="PNG")
     buffer.seek(0)
     img_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
-    
+    # save image to disk for debugging
+    # result['processed_image'].save(f"debug_{model_name}_processed.png")
+    print(f"Model {model_name} processed region successfully.")
     return {
         "status": "success",
         "processed_image_base64": img_base64,
@@ -758,14 +801,29 @@ def shutdown_event():
 
 if __name__ == "__main__":
     import uvicorn
+    import os
+    import sys
     
-    # Run with hot-reload enabled for development
-    # This will automatically restart the server when code changes are detected
+    # Ensure current directory is in Python path for reload subprocess
+    current_dir = str(Path(__file__).parent.resolve())
+    if current_dir not in sys.path:
+        sys.path.insert(0, current_dir)
+    
+    # Set PYTHONPATH environment variable for uvicorn subprocess
+    python_path = os.environ.get('PYTHONPATH', '')
+    paths_to_add = [current_dir]
+    for path in paths_to_add:
+        if path not in python_path:
+            python_path = f"{path}:{python_path}" if python_path else path
+    os.environ['PYTHONPATH'] = python_path
+    
+    # Run server
+    # Note: reload=False to avoid subprocess import issues with HoVer-Net
+    # Use: uvicorn app_refactored:app --reload for development with manual restart
     uvicorn.run(
-        "app_refactored:app",  # Use string format for reload to work
+        app,  # Direct app reference (no string) when reload=False
         host="0.0.0.0",
         port=8000,
-        reload=True,  # Enable auto-reload on file changes
-        reload_dirs=[".", "models", "src"],  # Watch these directories
+        reload=False,  # Disabled to avoid subprocess issues
         log_level="info"
     )
