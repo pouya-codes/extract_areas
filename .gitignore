@@ -6,6 +6,7 @@ DeepLIIF
 models/deepliif
 models/sam2
 models/EC_model/
+models/hovernet_checkpoints/
 *.sif
 bcpark*.py
 ~$*
