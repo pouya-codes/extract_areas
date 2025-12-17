@@ -24,16 +24,16 @@
     "consep": {
       "checkpoint": "models/hovernet_checkpoints/hovernet_original_consep_type_tf2pytorch.tar",
       "type_info": "models/hovernet_checkpoints/type_info_consep.json",
-      "nr_types": 4,
+      "nr_types": 5,
       "mode": "original",
-      "description": "CoNSeP - 4 nucleus types (Inflammatory, Epithelial, Spindle, Miscellaneous)"
+      "description": "CoNSeP - 5 nucleus types (Background, Inflammatory, Epithelial, Spindle, Miscellaneous)"
     },
     "monusac": {
-      "checkpoint": "models/hovernet_checkpoints/hovernet_original_monusac_type_tf2pytorch.tar",
+      "checkpoint": "models/hovernet_checkpoints/hovernet_fast_monusac_type_tf2pytorch.tar",
       "type_info": "models/hovernet_checkpoints/type_info_monusac.json",
-      "nr_types": 4,
-      "mode": "original",
-      "description": "MoNuSAC - 4 nucleus types (Epithelial, Lymphocyte, Macrophage, Neutrophil)"
+      "nr_types": 5,
+      "mode": "fast",
+      "description": "MoNuSAC - 5 nucleus types (Background, Epithelial, Lymphocyte, Macrophage, Neutrophil)"
     },
     "kumar": {
       "checkpoint": "models/hovernet_checkpoints/hovernet_original_kumar_notype_tf2pytorch.tar",

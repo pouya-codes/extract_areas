@@ -115,11 +115,14 @@ class HoVerNetModel(BaseAIModel):
                 - gpu_ids: List of GPU IDs (default: [0])
                 - batch_size: Batch size for inference (default: 8)
         """
+        # Reload config from file to get fresh values
+        current_model_configs = load_model_configs_from_file()
+        
         # Check if using a predefined model variant
         model_variant = config.get('model_variant')
-        if model_variant and model_variant in MODEL_CONFIGS:
+        if model_variant and model_variant in current_model_configs:
             # Use predefined configuration
-            variant_config = MODEL_CONFIGS[model_variant]
+            variant_config = current_model_configs[model_variant]
             model_path = variant_config['checkpoint']
             self.model_mode = variant_config['mode']
             self.nr_types = variant_config['nr_types']
@@ -304,16 +307,17 @@ class HoVerNetModel(BaseAIModel):
             
             # Check if model variant has changed - reinitialize if needed
             requested_variant = params.get('model_variant')
+            
+            # Reload config from file to get fresh values
+            current_model_configs = load_model_configs_from_file()
+            
             if (requested_variant and 
                 requested_variant != self.current_variant and
-                requested_variant in MODEL_CONFIGS):
+                requested_variant in current_model_configs):
                 
                 print(f"Switching model variant from {self.current_variant} to {requested_variant}")
                 
-                # Get configuration for new variant
-                variant_config = MODEL_CONFIGS[requested_variant]
-                
-                # Build new config
+                # Build new config - initialize will use fresh config
                 reinit_config = {
                     'model_variant': requested_variant,
                     'device': str(self.device),
@@ -831,9 +835,12 @@ class HoVerNetModel(BaseAIModel):
                 - choices: Valid values (for choice type)
                 - description: Human-readable description
         """
+        # Reload config from file to get fresh values
+        current_model_configs = load_model_configs_from_file()
+        
         # Build model variant choices with labels
         model_variant_choices = []
-        for variant_id, variant_config in MODEL_CONFIGS.items():
+        for variant_id, variant_config in current_model_configs.items():
             model_variant_choices.append({
                 'value': variant_id,
                 'label': f"{variant_id.upper()} - {variant_config['description']}"
@@ -872,6 +879,9 @@ class HoVerNetModel(BaseAIModel):
         if self.model is not None:
             del self.model
             self.model = None
+
+        self._is_initialized = False
+        self.current_variant = None
 
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
