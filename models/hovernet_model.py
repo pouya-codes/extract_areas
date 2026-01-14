@@ -193,9 +193,13 @@ class HoVerNetModel(BaseAIModel):
         # For now, we'll use a simplified loading approach
 
         try:
-            # Dynamically import HoVer-Net modules
-            # HoVer-Net has structure: hovernet/models/hovernet/net_desc.py
-            hovernet_repo = Path(__file__).parent / 'hovernet'
+            # Dynamically import HoVer-Net modules.
+            # We vend the upstream HoVer-Net repo under:
+            #   extract_areas/module/hovernet
+            # (moved from extract_areas/models/hovernet)
+            hovernet_repo = (
+                Path(__file__).resolve().parent.parent / 'module' / 'hovernet'
+            )
             if not hovernet_repo.exists():
                 raise FileNotFoundError(
                     f"HoVer-Net repository not found at {hovernet_repo}. "
@@ -311,11 +315,16 @@ class HoVerNetModel(BaseAIModel):
             # Reload config from file to get fresh values
             current_model_configs = load_model_configs_from_file()
             
-            if (requested_variant and 
-                requested_variant != self.current_variant and
-                requested_variant in current_model_configs):
-                
-                print(f"Switching model variant from {self.current_variant} to {requested_variant}")
+            if (
+                requested_variant
+                and requested_variant != self.current_variant
+                and requested_variant in current_model_configs
+            ):
+
+                print(
+                    "Switching model variant from "
+                    f"{self.current_variant} to {requested_variant}"
+                )
                 
                 # Build new config - initialize will use fresh config
                 reinit_config = {
