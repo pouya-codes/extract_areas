@@ -2,10 +2,6 @@ temp*
 .idea/
 __pycache__/
 .vscode/
-models/deepliif
-models/sam2
-models/EC_model/
-models/hovernet_checkpoints/
 *.sif
 bcpark*.py
 ~$*
@@ -13,6 +9,3 @@ bunzenlake.py
 *lock*
 other/
 api_job*
-
-# Too large for GitHub LFS (per-object limit is 2GB)
-models/EC_model/sam_vit_h.pth

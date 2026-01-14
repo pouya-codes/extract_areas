@@ -1,0 +1,7 @@
+{
+    "0": ["Background", [0, 0, 0]],
+    "1": ["Inflammatory", [0, 255, 0]],
+    "2": ["Epithelial", [255, 0, 0]],
+    "3": ["Spindle", [0, 0, 255]],
+    "4": ["Miscellaneous", [255, 255, 0]]
+}
