@@ -665,10 +665,14 @@ class HoVerNetModel(BaseAIModel):
         from skimage.feature import peak_local_max
 
         dist = ndi.distance_transform_edt(blb)
-        local_max = peak_local_max(
+        # peak_local_max returns coordinates; create boolean mask from them
+        local_max_coords = peak_local_max(
             dist, min_distance=7, threshold_abs=0,
-            exclude_border=False, indices=False
+            exclude_border=False
         )
+        local_max = np.zeros(dist.shape, dtype=bool)
+        if len(local_max_coords) > 0:
+            local_max[local_max_coords[:, 0], local_max_coords[:, 1]] = True
         markers = measure.label(local_max)
 
         pred_inst = watershed(-overall, markers, mask=blb)

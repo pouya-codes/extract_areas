@@ -1,4 +1,4 @@
-name: SlideChat
+name: API
 channels:
   - defaults
   - https://repo.anaconda.com/pkgs/main
@@ -214,7 +214,6 @@ dependencies:
       - pydantic-core==2.33.2
       - pydeck==0.9.1
       - pygments==2.19.2
-      - pynvml==13.0.1
       - pyparsing==3.2.3
       - python-bioformats==4.1.0
       - python-dateutil==2.9.0.post0

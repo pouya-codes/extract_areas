@@ -1,10 +1,10 @@
 {
-  "maskgenerator_enabled": false,
+  "maskgenerator_enabled": true,
   "sam_model_path": "TBD",
   "sam2_model_path": "models/sam2/sam2.1_hiera_large.pt",
   "sam2_config_path": "models/sam2/sam2.1_hiera_l.yaml",
   "default_model": "sam2",
-  "deepliif_enabled": false,
+  "deepliif_enabled": true,
   "deepliif_model_path": "models/deepliif/",
   "patch_classifier_model_path": "models/tumor_normal.pth",
   "patch_classifier_enabled": false,
