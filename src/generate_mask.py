@@ -1,5 +1,4 @@
 import pyvips
-from segment_anything import SamPredictor, sam_model_registry, SamAutomaticMaskGenerator
 import cv2
 import os
 import torch
@@ -10,6 +9,8 @@ from collections import Counter
 from sam2.build_sam import build_sam2
 from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
 
+import logging
+
 
 if torch.cuda.is_available():
     device = torch.device("cuda")
@@ -17,7 +18,9 @@ elif torch.backends.mps.is_available():
     device = torch.device("mps")
 else:
     device = torch.device("cpu")
-print(f"using device: {device}")
+
+logger = logging.getLogger(__name__)
+logger.info("using device: %s", device)
 
 
 class MaskGenerator:
@@ -28,9 +31,15 @@ class MaskGenerator:
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Model checkpoint not found at {model_path}")
         if self.model_name == "sam":
+            # Lazy import so SAM2 usage doesn't require segment_anything installed.
+            from segment_anything import (
+                SamPredictor,
+                sam_model_registry,
+                SamAutomaticMaskGenerator,
+            )
             self.sam = sam_model_registry["vit_h"](checkpoint=model_path)
             self.predictor = SamPredictor(self.sam)
-            self.sam.to(device="cuda")
+            self.sam.to(device=device)
             self.mask_generator = SamAutomaticMaskGenerator(self.sam)
         elif self.model_name == "sam2":
             if model_config is None:
