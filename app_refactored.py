@@ -260,6 +260,68 @@ async def extract_regions_api(
     }
 
 
+@app.post("/generate_tissue_regions")
+async def generate_tissue_regions_api(
+    file: UploadFile = File(...),
+    slide_width: int = Form(...),
+    slide_height: int = Form(...),
+    is_tma: bool = Form(False),
+):
+    """Generate mask from a thumbnail and extract tissue regions in one step.
+
+    Combines /generate_mask and /extract_regions so the caller does not need
+    two round-trips.  Returns the same region format as /extract_regions plus
+    the intermediate mask as base64 PNG.
+    """
+    if mask_gen is None:
+        return JSONResponse(
+            {"status": "error", "message": "Mask generator is not enabled."},
+            status_code=500,
+        )
+
+    # Validate PNG input
+    is_png = False
+    if file.filename and file.filename.lower().endswith(".png"):
+        is_png = True
+    elif file.content_type and file.content_type == "image/png":
+        is_png = True
+    elif not file.filename or file.filename == "":
+        is_png = True
+
+    if not is_png:
+        return JSONResponse(
+            {"status": "error", "message": "Only PNG files are supported."},
+            status_code=400,
+        )
+
+    contents = await file.read()
+    image_bytes = BytesIO(contents)
+
+    # Step 1 – generate binary mask
+    final_mask = mask_gen.generate_mask(image_bytes, is_tma=is_tma)
+    if final_mask is None:
+        return JSONResponse({"status": "no_masks_found"})
+
+    # Encode mask to PNG bytes for region extraction
+    _, mask_png = cv2.imencode(".png", final_mask.astype(np.uint8))
+    mask_bytes_io = BytesIO(mask_png.tobytes())
+
+    # Step 2 – extract regions from the mask
+    regions = extract_regions_from_mask(
+        mask_bytes_io, (slide_width, slide_height)
+    )
+
+    # Also return the mask as base64 for optional client-side use
+    mask_b64 = base64.b64encode(mask_png).decode("utf-8")
+
+    return {
+        "status": "success",
+        "mask_base64": mask_b64,
+        "mask_shape": list(final_mask.shape),
+        "regions": regions,
+    }
+
+
 @app.post("/auto_name_regions")
 async def auto_name_regions_api(request: dict):
     """Auto-name regions using intelligent spatial ordering."""
