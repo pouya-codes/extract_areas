@@ -8,12 +8,15 @@ Replace your current app.py with this code, or merge the changes.
 
 from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 import base64
 import json
+import threading
 import numpy as np
 import tempfile
 import cv2
 from io import BytesIO
+from typing import Any, Dict, List, Optional
 from PIL import Image, ImageDraw
 from pathlib import Path
 
@@ -28,7 +31,21 @@ from models.hovernet_model import HoVerNetModel
 # Import existing utilities (keep your existing imports)
 from mask_generator import MaskGenerator
 from config import config
+from slide_region import (
+    SlideAccessError,
+    polygon_mask,
+    read_region,
+    resolve_slide_path,
+)
 from src.utils import extract_regions_from_mask
+
+# Each replica owns one GPU. Endpoints declared with `def` rather than `async
+# def` run in FastAPI's threadpool, so without this two requests landing on the
+# same replica would enter the models concurrently and contend for that card.
+# Serialising inference keeps GPU memory bounded and matches the one-at-a-time
+# behaviour the models were written for; concurrency comes from the four
+# replicas behind the load balancer, not from threads inside one of them.
+_inference_lock = threading.Lock()
 
 
 def get_absolute_path(relative_path):
@@ -538,6 +555,131 @@ async def process_region_annotation_api(
     }
 
 
+class SlideRegionRequest(BaseModel):
+    """A region to process, described by location rather than by pixels."""
+
+    slide_path: str
+    roi_bbox: List[float]
+    polygon: Optional[List[Any]] = None
+    downsample: float = 1.0
+    overlay_downsample: Optional[float] = None
+    model_name: str = "deepliif"
+    hyperparameters: Optional[Dict[str, Any]] = None
+    region_id: str = ""
+
+
+@app.post("/process_region_from_slide")
+def process_region_from_slide_api(request: SlideRegionRequest):
+    """Process a region the caller identifies by slide path and coordinates.
+
+    The counterpart to ``/process_region_annotation``, for callers that share a
+    filesystem with this service. Reading the region here instead of receiving
+    it as an upload skips a full-resolution read, a JPEG round-trip and a
+    multi-hundred-megabyte POST, and lets OpenSlide serve the request from
+    whichever pyramid level already matches the requested downsample.
+
+    The overlay comes back covering only the region, tagged with the level-0
+    box it occupies, so the caller can place it without building a slide-sized
+    canvas around it.
+    """
+    model = model_registry.get_model(request.model_name)
+    if not model:
+        return JSONResponse(
+            {
+                "status": "error",
+                "message": f"Model '{request.model_name}' not found. "
+                           f"Available: {model_registry.list_loaded_models()}"
+            },
+            status_code=400
+        )
+
+    try:
+        slide_path = resolve_slide_path(
+            request.slide_path, config.get("slide_roots", [])
+        )
+        region_image, info = read_region(
+            slide_path,
+            request.roi_bbox,
+            downsample=request.downsample,
+            max_pixels=config.get("max_region_pixels") or None,
+        )
+    except SlideAccessError as e:
+        return JSONResponse({"status": "error", "message": str(e)}, status_code=400)
+    except Exception as e:
+        print(f"ERROR: failed to read region from {request.slide_path}: {e}")
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(
+            {"status": "error", "message": f"Failed to read slide region: {e}"},
+            status_code=500
+        )
+
+    bbox = info["bbox"]
+    mask_image = polygon_mask(request.polygon, bbox, info["size"])
+
+    try:
+        with _inference_lock:
+            result = model.process(
+                image=region_image,
+                mask=mask_image,
+                annotation_points=None,
+                hyperparameters=request.hyperparameters
+            )
+    except Exception as e:
+        print(f"ERROR: Model {request.model_name} failed to process region: {e}")
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(
+            {"status": "error", "message": f"Model processing failed: {e}"},
+            status_code=500
+        )
+    finally:
+        region_image.close()
+        mask_image.close()
+
+    if not result['success']:
+        return JSONResponse(
+            {"status": "error", "message": result.get('error', 'Unknown error')},
+            status_code=500
+        )
+
+    processed = result['processed_image']
+    x0, y0, w, h = bbox
+
+    # Emit the overlay at the resolution it will be displayed at. Downscaling
+    # here rather than after transport keeps the response small, and the caller
+    # never has to guess the overlay's scale.
+    overlay_downsample = float(request.overlay_downsample or info["downsample"])
+    overlay_downsample = max(1.0, overlay_downsample)
+    overlay_w = max(1, int(round(w / overlay_downsample)))
+    overlay_h = max(1, int(round(h / overlay_downsample)))
+    if processed.size != (overlay_w, overlay_h):
+        processed = processed.resize(
+            (overlay_w, overlay_h), Image.Resampling.LANCZOS
+        )
+
+    buffer = BytesIO()
+    processed.save(buffer, format="PNG", optimize=True)
+    processed.close()
+    img_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+    return {
+        "status": "success",
+        "processed_image_base64": img_base64,
+        "overlay_bbox": [x0, y0, w, h],
+        "overlay_width": overlay_w,
+        "overlay_height": overlay_h,
+        "overlay_downsample": w / overlay_w if overlay_w else overlay_downsample,
+        "processed_downsample": info["downsample"],
+        "slide_level_used": info["level"],
+        "score": result['scores'],
+        "str_result": result.get('str_result', 'Processing complete'),
+        "region_id": request.region_id,
+        "model_used": request.model_name,
+        "model_version": model.model_version
+    }
+
+
 @app.post("/process_region")
 async def process_region_api(
     region: UploadFile = File(...),
@@ -611,6 +753,39 @@ async def process_region_api(
 # ============================================================================
 # NEW: Model Management Endpoints
 # ============================================================================
+
+@app.get("/health")
+async def health():
+    """
+    Report replica readiness and which GPU this process is pinned to.
+
+    Each replica runs with CUDA_VISIBLE_DEVICES set to a single GPU, so the
+    device seen here as index 0 is the physical card named by AI_REPLICA_GPU.
+    """
+    import os
+    import torch
+
+    gpu = None
+    if torch.cuda.is_available() and torch.cuda.device_count() > 0:
+        gpu = {
+            "name": torch.cuda.get_device_name(0),
+            "physical_index": os.environ.get("AI_REPLICA_GPU"),
+            "memory_allocated_mb": round(
+                torch.cuda.memory_allocated(0) / 1024 ** 2, 1
+            ),
+            "memory_reserved_mb": round(
+                torch.cuda.memory_reserved(0) / 1024 ** 2, 1
+            ),
+        }
+
+    return {
+        "status": "ok",
+        "port": os.environ.get("AI_REPLICA_PORT"),
+        "gpu": gpu,
+        "mask_generator": mask_gen is not None,
+        "loaded_models": model_registry.list_loaded_models(),
+    }
+
 
 @app.get("/models/list")
 async def list_models():

@@ -1,0 +1,7 @@
+[Unit]
+Description=extract_areas AI inference API (all GPU replicas)
+After=network-online.target
+Wants=extract-areas-api@0.service extract-areas-api@1.service extract-areas-api@2.service extract-areas-api@3.service
+
+[Install]
+WantedBy=multi-user.target

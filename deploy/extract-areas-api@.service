@@ -1,0 +1,25 @@
+[Unit]
+Description=extract_areas AI inference API (GPU %i)
+After=network-online.target
+Wants=network-online.target
+PartOf=extract-areas-api.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/code/extract_areas
+ExecStart=/home/ubuntu/code/extract_areas/deploy/run_replica.sh %i
+
+# Loading DeepLIIF + HoVer-Net + SAM2 onto the GPU takes ~1-2 min on a cold
+# page cache; don't let systemd kill the replica mid-load.
+TimeoutStartSec=600
+Restart=on-failure
+RestartSec=10
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=extract-areas-api-gpu%i
+
+[Install]
+WantedBy=extract-areas-api.target
