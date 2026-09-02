@@ -10,3 +10,6 @@ bunzenlake.py
 other/
 api_job*
 module/sam2/
+.env
+.env.*
+!.env.example

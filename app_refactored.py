@@ -12,6 +12,7 @@ from pydantic import BaseModel
 import base64
 import json
 import threading
+import time
 import numpy as np
 import tempfile
 import cv2
@@ -54,16 +55,24 @@ def get_absolute_path(relative_path):
 
 
 def init_mask_generator():
-    """Initialize mask generator (unchanged)."""
-    if config["default_model"] == "sam":
-        return MaskGenerator(model_path=config["sam_model_path"])
-    elif config["default_model"] == "sam2":
+    """Initialize mask generator (SAM / SAM2 / SAM3)."""
+    backend = config.get("default_model", "sam2")
+    if backend == "sam":
+        return MaskGenerator(model_path=config["sam_model_path"], model_name="sam")
+    if backend == "sam2":
         return MaskGenerator(
             model_path=get_absolute_path(config["sam2_model_path"]),
-            model_config=config["sam2_config_path"]
+            model_config=config["sam2_config_path"],
+            model_name="sam2",
         )
-    else:
-        raise ValueError(f"Unknown model type: {config['default_model']}")
+    if backend == "sam3":
+        return MaskGenerator(
+            model_name="sam3",
+            hf_model_id=config.get("sam3_model_id", "facebook/sam3"),
+            points_per_batch=int(config.get("sam3_points_per_batch", 64)),
+            crop_overlap_ratio=float(config.get("sam3_crop_overlap_ratio", 0.4)),
+        )
+    raise ValueError(f"Unknown model type: {backend}")
 
 
 # Initialize FastAPI app
@@ -182,8 +191,39 @@ def initialize_models():
             print("  Model registered but not loaded. Configure hovernet_models in config.json.")
 
 
+def warmup_models():
+    """Run a throwaway region through each model so the first user does not.
+
+    Several postprocessing steps are numba-jitted, which costs about seven
+    seconds the first time a replica runs them. Paying that here means it
+    happens once at boot instead of on somebody's first region.
+    """
+    rng = np.random.default_rng(0)
+    # Structured noise rather than a flat colour: models skip blank tiles, and
+    # a skipped tile compiles nothing.
+    noise = rng.integers(90, 220, size=(512, 512, 3), dtype=np.uint8)
+    probe = Image.fromarray(noise)
+    mask = Image.new("L", probe.size, 255)
+
+    for name in model_registry.list_loaded_models():
+        model = model_registry.get_model(name)
+        if model is None:
+            continue
+        started = time.perf_counter()
+        try:
+            model.process(image=probe, mask=mask, annotation_points=None,
+                          hyperparameters=None)
+            print(f"✓ Warmed up {name} in {time.perf_counter() - started:.1f}s")
+        except Exception as e:  # a failed warmup must not stop the service
+            print(f"⚠ Warmup for {name} failed ({e}); first request will be slower")
+
+    probe.close()
+    mask.close()
+
+
 # Initialize models at startup
 initialize_models()
+warmup_models()
 
 
 # ============================================================================
@@ -617,15 +657,30 @@ def process_region_from_slide_api(request: SlideRegionRequest):
     bbox = info["bbox"]
     mask_image = polygon_mask(request.polygon, bbox, info["size"])
 
+    # Models that size their tiles by physical scale need to know what a pixel
+    # of this region is worth. Only pass it to those that ask, so the rest do
+    # not have to tolerate an unexpected hyperparameter.
+    hyperparameters = dict(request.hyperparameters or {})
+    if getattr(model, "accepts_mpp", False):
+        if info.get("mpp"):
+            hyperparameters.setdefault("mpp", info["mpp"])
+        if info.get("downsample"):
+            hyperparameters.setdefault("downsample", info["downsample"])
+
+    queued_at = time.perf_counter()
     try:
         with _inference_lock:
+            started_at = time.perf_counter()
             result = model.process(
                 image=region_image,
                 mask=mask_image,
                 annotation_points=None,
-                hyperparameters=request.hyperparameters
+                hyperparameters=hyperparameters
             )
+            elapsed = time.perf_counter() - started_at
     except Exception as e:
+        region_image.close()
+        mask_image.close()
         print(f"ERROR: Model {request.model_name} failed to process region: {e}")
         import traceback
         traceback.print_exc()
@@ -633,35 +688,38 @@ def process_region_from_slide_api(request: SlideRegionRequest):
             {"status": "error", "message": f"Model processing failed: {e}"},
             status_code=500
         )
+
+    processed = result.get('processed_image') if result['success'] else None
+    try:
+        if not result['success']:
+            return JSONResponse(
+                {"status": "error", "message": result.get('error', 'Unknown error')},
+                status_code=500
+            )
+
+        x0, y0, w, h = bbox
+
+        # Emit the overlay at the resolution it will be displayed at.
+        # Downscaling here rather than after transport keeps the response
+        # small, and the caller never has to guess the overlay's scale.
+        overlay_downsample = float(request.overlay_downsample or info["downsample"])
+        overlay_downsample = max(1.0, overlay_downsample)
+        overlay_w = max(1, int(round(w / overlay_downsample)))
+        overlay_h = max(1, int(round(h / overlay_downsample)))
+        if processed.size != (overlay_w, overlay_h):
+            processed = processed.resize(
+                (overlay_w, overlay_h), Image.Resampling.LANCZOS
+            )
+
+        buffer = BytesIO()
+        processed.save(buffer, format="PNG", optimize=True)
+        img_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
     finally:
-        region_image.close()
-        mask_image.close()
-
-    if not result['success']:
-        return JSONResponse(
-            {"status": "error", "message": result.get('error', 'Unknown error')},
-            status_code=500
-        )
-
-    processed = result['processed_image']
-    x0, y0, w, h = bbox
-
-    # Emit the overlay at the resolution it will be displayed at. Downscaling
-    # here rather than after transport keeps the response small, and the caller
-    # never has to guess the overlay's scale.
-    overlay_downsample = float(request.overlay_downsample or info["downsample"])
-    overlay_downsample = max(1.0, overlay_downsample)
-    overlay_w = max(1, int(round(w / overlay_downsample)))
-    overlay_h = max(1, int(round(h / overlay_downsample)))
-    if processed.size != (overlay_w, overlay_h):
-        processed = processed.resize(
-            (overlay_w, overlay_h), Image.Resampling.LANCZOS
-        )
-
-    buffer = BytesIO()
-    processed.save(buffer, format="PNG", optimize=True)
-    processed.close()
-    img_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+        # Some models hand back the input image itself as their overlay, so
+        # none of these can be released until the PNG has been written.
+        for image in (processed, region_image, mask_image):
+            if image is not None:
+                image.close()
 
     return {
         "status": "success",
@@ -676,7 +734,16 @@ def process_region_from_slide_api(request: SlideRegionRequest):
         "str_result": result.get('str_result', 'Processing complete'),
         "region_id": request.region_id,
         "model_used": request.model_name,
-        "model_version": model.model_version
+        "model_version": model.model_version,
+        "metadata": result.get('metadata') or {},
+        "timing": {
+            # Time spent waiting on the replica's lock is the honest measure of
+            # queueing, and it is the first thing to look at when a job is slow
+            # despite the model itself being fast.
+            "queue_seconds": round(started_at - queued_at, 3),
+            "model_seconds": round(elapsed, 3),
+            "region_pixels": info["size"][0] * info["size"][1],
+        },
     }
 
 
@@ -783,6 +850,7 @@ async def health():
         "port": os.environ.get("AI_REPLICA_PORT"),
         "gpu": gpu,
         "mask_generator": mask_gen is not None,
+        "mask_generator_backend": getattr(mask_gen, "model_name", None),
         "loaded_models": model_registry.list_loaded_models(),
     }
 

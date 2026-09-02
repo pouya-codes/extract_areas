@@ -29,6 +29,16 @@ export PYTHONPATH="$REPO_DIR${PYTHONPATH:+:$PYTHONPATH}"
 # python-javabridge (pulled in by DeepLIIF via bioformats) needs a JVM.
 export JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-11-openjdk-amd64}"
 
+# Optional secrets for gated HF models (SAM3). File is gitignored.
+# Expected line: HF_TOKEN=hf_...
+ENV_FILE="${REPO_DIR}/.env"
+if [[ -f "$ENV_FILE" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$ENV_FILE"
+    set +a
+fi
+
 # 32 cores across 4 replicas; keep BLAS from oversubscribing the box.
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-8}"
 export MKL_NUM_THREADS="${MKL_NUM_THREADS:-8}"

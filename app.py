@@ -30,15 +30,23 @@ def init_image_processor(
         )
 
 def init_mask_generator():
-    if config["default_model"] == "sam":
-        return MaskGenerator(model_path=config["sam_model_path"])
-    elif config["default_model"] == "sam2":
+    backend = config.get("default_model", "sam2")
+    if backend == "sam":
+        return MaskGenerator(model_path=config["sam_model_path"], model_name="sam")
+    if backend == "sam2":
         return MaskGenerator(
             model_path=get_absolute_path(config["sam2_model_path"]),
-            model_config=config["sam2_config_path"]
+            model_config=config["sam2_config_path"],
+            model_name="sam2",
         )
-    else:
-        raise ValueError(f"Unknown model type: {config['default_model']}")
+    if backend == "sam3":
+        return MaskGenerator(
+            model_name="sam3",
+            hf_model_id=config.get("sam3_model_id", "facebook/sam3"),
+            points_per_batch=int(config.get("sam3_points_per_batch", 64)),
+            crop_overlap_ratio=float(config.get("sam3_crop_overlap_ratio", 0.4)),
+        )
+    raise ValueError(f"Unknown model type: {backend}")
 
 app = FastAPI()
 # Initialize the image processor
