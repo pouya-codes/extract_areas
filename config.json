@@ -1,55 +1,100 @@
 {
-  "maskgenerator_enabled": true,
-  "sam_model_path": "TBD",
-  "sam2_model_path": "models/sam2/sam2.1_hiera_large.pt",
-  "sam2_config_path": "models/sam2/sam2.1_hiera_l.yaml",
-  "sam3_model_id": "facebook/sam3",
-  "sam3_points_per_batch": 64,
-  "sam3_crop_overlap_ratio": 0.4,
-  "default_model": "sam3",
-  "deepliif_enabled": true,
-  "deepliif_model_path": "models/deepliif/",
-  "patch_classifier_model_path": "models/tumor_normal.pth",
-  "patch_classifier_enabled": false,
-  "ec_cancer_enabled": true,
-  "ec_cancer_patch_classifier_path": "models/EC_model/tumor_normal.pt",
-  "ec_cancer_representation_path": "models/EC_model/representation.pth",
-  "ec_cancer_varmil_path": "models/EC_model/VarMIL.pth",
-  "hovernet_enabled": true,
-  "hovernet_models": {
-    "pannuke": {
-      "checkpoint": "models/hovernet_checkpoints/hovernet_fast_pannuke_type_tf2pytorch.tar",
-      "type_info": "models/hovernet_checkpoints/type_info_pannuke.json",
-      "nr_types": 6,
-      "mode": "fast",
-      "description": "PanNuke - 6 nucleus types (Neoplastic, Inflammatory, Connective, Dead, Epithelial, Background)"
-    },
-    "consep": {
-      "checkpoint": "models/hovernet_checkpoints/hovernet_original_consep_type_tf2pytorch.tar",
-      "type_info": "models/hovernet_checkpoints/type_info_consep.json",
-      "nr_types": 5,
-      "mode": "original",
-      "description": "CoNSeP - 5 nucleus types (Background, Inflammatory, Epithelial, Spindle, Miscellaneous)"
-    },
-    "monusac": {
-      "checkpoint": "models/hovernet_checkpoints/hovernet_fast_monusac_type_tf2pytorch.tar",
-      "type_info": "models/hovernet_checkpoints/type_info_monusac.json",
-      "nr_types": 5,
-      "mode": "fast",
-      "description": "MoNuSAC - 5 nucleus types (Background, Epithelial, Lymphocyte, Macrophage, Neutrophil)"
-    },
-    "kumar": {
-      "checkpoint": "models/hovernet_checkpoints/hovernet_original_kumar_notype_tf2pytorch.tar",
-      "type_info": null,
-      "nr_types": 0,
-      "mode": "original",
-      "description": "Kumar - Segmentation only (no type classification)"
-    }
-  },
   "slide_roots": ["/data/omero/data"],
   "max_region_pixels": 64000000,
-  "hovernet_default_variant": "pannuke",
-  "hovernet_device": "cuda",
-  "hovernet_gpu_ids": [0],
-  "hovernet_batch_size": 8
+  "redis": {
+    "host": "localhost",
+    "port": 6379,
+    "db": 0
+  },
+  "mask_generator": {
+    "enabled": true,
+    "backend": "sam3",
+    "sam_model_path": "TBD",
+    "sam2_model_path": "models/sam2/sam2.1_hiera_large.pt",
+    "sam2_config_path": "models/sam2/sam2.1_hiera_l.yaml",
+    "sam3_model_id": "facebook/sam3",
+    "sam3_points_per_batch": 64,
+    "sam3_crop_overlap_ratio": 0.4
+  },
+  "pools": {
+    "general": {
+      "gpus": [0, 1, 2],
+      "base_port": 8001
+    },
+    "heavy": {
+      "gpus": [3],
+      "base_port": 8004
+    }
+  },
+  "models": {
+    "deepliif": {
+      "enabled": true,
+      "pool": "general",
+      "lazy_load": false,
+      "path": "models/deepliif/",
+      "tile_size": 256,
+      "post_processing": true
+    },
+    "patch_classifier": {
+      "enabled": false,
+      "pool": "general",
+      "lazy_load": false,
+      "path": "models/tumor_normal.pth"
+    },
+    "ec_cancer": {
+      "enabled": true,
+      "pool": "general",
+      "lazy_load": false,
+      "patch_classifier_path": "models/EC_model/tumor_normal.pt",
+      "representation_path": "models/EC_model/representation.pth",
+      "varmil_path": "models/EC_model/VarMIL.pth"
+    },
+    "hovernet": {
+      "enabled": true,
+      "pool": "general",
+      "lazy_load": false,
+      "default_variant": "pannuke",
+      "device": "cuda",
+      "gpu_ids": [0],
+      "batch_size": 8,
+      "variants": {
+        "pannuke": {
+          "checkpoint": "models/hovernet_checkpoints/hovernet_fast_pannuke_type_tf2pytorch.tar",
+          "type_info": "models/hovernet_checkpoints/type_info_pannuke.json",
+          "nr_types": 6,
+          "mode": "fast",
+          "description": "PanNuke - 6 nucleus types (Neoplastic, Inflammatory, Connective, Dead, Epithelial, Background)"
+        },
+        "consep": {
+          "checkpoint": "models/hovernet_checkpoints/hovernet_original_consep_type_tf2pytorch.tar",
+          "type_info": "models/hovernet_checkpoints/type_info_consep.json",
+          "nr_types": 5,
+          "mode": "original",
+          "description": "CoNSeP - 5 nucleus types (Background, Inflammatory, Epithelial, Spindle, Miscellaneous)"
+        },
+        "monusac": {
+          "checkpoint": "models/hovernet_checkpoints/hovernet_fast_monusac_type_tf2pytorch.tar",
+          "type_info": "models/hovernet_checkpoints/type_info_monusac.json",
+          "nr_types": 5,
+          "mode": "fast",
+          "description": "MoNuSAC - 5 nucleus types (Background, Epithelial, Lymphocyte, Macrophage, Neutrophil)"
+        },
+        "kumar": {
+          "checkpoint": "models/hovernet_checkpoints/hovernet_original_kumar_notype_tf2pytorch.tar",
+          "type_info": null,
+          "nr_types": 0,
+          "mode": "original",
+          "description": "Kumar - Segmentation only (no type classification)"
+        }
+      }
+    },
+    "pdac": {
+      "enabled": true,
+      "pool": "heavy",
+      "lazy_load": true,
+      "package_root": "/data/models/PDAC_GigaPath_1024_FT",
+      "device": "auto",
+      "batch_size": 16
+    }
+  }
 }

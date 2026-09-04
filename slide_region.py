@@ -72,6 +72,29 @@ def clamp_bbox(bbox, slide_size):
     return x0, y0, w, h
 
 
+def level0_mpp(slide):
+    """Microns per pixel at level 0, or ``None`` when the slide does not say.
+
+    Falls back to the objective power because some scanners record only that.
+    Models that pick a tile size from physical scale need this; without it they
+    have to assume a magnification and will mis-size their detections.
+    """
+    for key in ("openslide.mpp-x", "openslide.mpp-y"):
+        try:
+            value = float(slide.properties.get(key))
+        except (TypeError, ValueError):
+            continue
+        if value > 0:
+            return value
+
+    try:
+        objective = float(slide.properties.get("openslide.objective-power"))
+    except (TypeError, ValueError):
+        return None
+    # 40x scanners resolve about 0.25 um/px, and the rest scale linearly.
+    return 10.0 / objective if objective > 0 else None
+
+
 def read_region(slide_path, bbox, downsample=1.0, max_pixels=None):
     """Read a level-0 ``bbox`` at ``downsample``, reading from the best level.
 
@@ -84,6 +107,7 @@ def read_region(slide_path, bbox, downsample=1.0, max_pixels=None):
     slide = openslide.OpenSlide(str(slide_path))
     try:
         x0, y0, w, h = clamp_bbox(bbox, slide.dimensions)
+        base_mpp = level0_mpp(slide)
 
         # A region the caller asked for at full resolution can be far larger
         # than anything a model should see at once. Coarsen rather than trying
@@ -122,12 +146,14 @@ def read_region(slide_path, bbox, downsample=1.0, max_pixels=None):
         tile.close()
         tile = resized
 
+    applied_downsample = w / target_w if target_w else downsample
     info = {
         "bbox": [x0, y0, w, h],
-        "downsample": w / target_w if target_w else downsample,
+        "downsample": applied_downsample,
         "level": level,
         "level_downsample": level_downsample,
         "size": [target_w, target_h],
+        "mpp": base_mpp * applied_downsample if base_mpp else None,
     }
     return tile, info
 

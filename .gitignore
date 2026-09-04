@@ -13,3 +13,6 @@ module/sam2/
 .env
 .env.*
 !.env.example
+
+# Local PDAC package symlink (weights live under /data/models)
+models/PDAC_GigaPath_1024_FT

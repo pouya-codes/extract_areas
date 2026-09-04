@@ -31,7 +31,7 @@ from models.hovernet_model import HoVerNetModel
 
 # Import existing utilities (keep your existing imports)
 from mask_generator import MaskGenerator
-from config import config
+from config import abs_path, config, model_enabled_for_pool, replica_pool, validate_model_paths
 from slide_region import (
     SlideAccessError,
     polygon_mask,
@@ -39,6 +39,7 @@ from slide_region import (
     resolve_slide_path,
 )
 from src.utils import extract_regions_from_mask
+import inference_jobs
 
 # Each replica owns one GPU. Endpoints declared with `def` rather than `async
 # def` run in FastAPI's threadpool, so without this two requests landing on the
@@ -47,148 +48,167 @@ from src.utils import extract_regions_from_mask
 # behaviour the models were written for; concurrency comes from the four
 # replicas behind the load balancer, not from threads inside one of them.
 _inference_lock = threading.Lock()
+_REPLICA_POOL = replica_pool()
 
 
 def get_absolute_path(relative_path):
     """Helper function to get absolute path from relative path."""
+    resolved = abs_path(relative_path)
+    if resolved:
+        return resolved
     return str(Path(relative_path).absolute())
 
 
 def init_mask_generator():
-    """Initialize mask generator (SAM / SAM2 / SAM3)."""
-    backend = config.get("default_model", "sam2")
+    """Initialize mask generator (SAM / SAM2 / SAM3). Only on the general pool."""
+    mg = config.get("mask_generator") or {}
+    backend = mg.get("backend", "sam3")
     if backend == "sam":
-        return MaskGenerator(model_path=config["sam_model_path"], model_name="sam")
+        return MaskGenerator(model_path=mg.get("sam_model_path", "TBD"), model_name="sam")
     if backend == "sam2":
         return MaskGenerator(
-            model_path=get_absolute_path(config["sam2_model_path"]),
-            model_config=config["sam2_config_path"],
+            model_path=get_absolute_path(mg["sam2_model_path"]),
+            model_config=mg["sam2_config_path"],
             model_name="sam2",
         )
     if backend == "sam3":
         return MaskGenerator(
             model_name="sam3",
-            hf_model_id=config.get("sam3_model_id", "facebook/sam3"),
-            points_per_batch=int(config.get("sam3_points_per_batch", 64)),
-            crop_overlap_ratio=float(config.get("sam3_crop_overlap_ratio", 0.4)),
+            hf_model_id=mg.get("sam3_model_id", "facebook/sam3"),
+            points_per_batch=int(mg.get("sam3_points_per_batch", 64)),
+            crop_overlap_ratio=float(mg.get("sam3_crop_overlap_ratio", 0.4)),
         )
-    raise ValueError(f"Unknown model type: {backend}")
+    raise ValueError(f"Unknown mask generator backend: {backend}")
 
 
 # Initialize FastAPI app
 app = FastAPI()
 
-# Initialize mask generator (existing functionality)
-if config.get("maskgenerator_enabled", False):
+# Mask generator: general pool only (heavy GPUs keep VRAM for PDAC).
+_mg_cfg = config.get("mask_generator") or {}
+if _mg_cfg.get("enabled") and _REPLICA_POOL == "general":
     mask_gen = init_mask_generator()
 else:
-    mask_gen = None 
+    mask_gen = None
+    if _mg_cfg.get("enabled") and _REPLICA_POOL != "general":
+        print(f"↷ Mask generator skipped on pool={_REPLICA_POOL}")
 
 # ============================================================================
-# NEW: Initialize AI Models using Registry System
+# Initialize AI Models using Registry System (pool-filtered)
 # ============================================================================
 
 
 def initialize_models():
-    """
-    Initialize all AI processing models.
-    
-    Add your models here following the pattern:
-    1. Register the model class
-    2. Load the model with configuration
-    """
-    if config.get("deepliif_enabled", False):
-        # Register DeepLIIF model
+    """Load only models whose ``pool`` matches ``AI_REPLICA_POOL``."""
+    models_cfg = config.get("models") or {}
+    print(f"Initializing models for pool={_REPLICA_POOL}")
+
+    # deepliif
+    mcfg = models_cfg.get("deepliif") or {}
+    if model_enabled_for_pool("deepliif", mcfg, _REPLICA_POOL):
         model_registry.register_model_class("deepliif", DeepLIIFModel)
-        
-        # Load DeepLIIF with configuration
+        errors = validate_model_paths("deepliif", mcfg)
+        if errors:
+            for e in errors:
+                print(f"✗ deepliif: {e}")
+            raise RuntimeError(f"deepliif enabled but paths missing: {errors}")
         deepliif_config = {
-            'model_dir': get_absolute_path(config["deepliif_model_path"]),
-            'tile_size': 256,
-            'post_processing': True,
-            'gpu_ids': []
+            "model_dir": get_absolute_path(mcfg["path"]),
+            "tile_size": mcfg.get("tile_size", 256),
+            "post_processing": mcfg.get("post_processing", True),
+            "gpu_ids": [],
         }
         model_registry.load_model("deepliif", deepliif_config)
         print("✓ Loaded DeepLIIF model")
-    
-    # Register and load PatchClassifier model (if enabled and weights exist)
-    if config.get("patch_classifier_enabled", False):
+
+    # patch_classifier
+    mcfg = models_cfg.get("patch_classifier") or {}
+    if model_enabled_for_pool("patch_classifier", mcfg, _REPLICA_POOL):
         model_registry.register_model_class("patch_classifier", PatchClassifierModel)
-        
-        patch_classifier_path = config.get("patch_classifier_model_path")
-        if patch_classifier_path and Path(patch_classifier_path).exists():
-            patch_classifier_config = {
-                'model_path': get_absolute_path(patch_classifier_path),
-                'patch_size': 64,
-                'batch_size': 32,
-                'classifier_threshold': 0.8,
-                'generate_gradcam': True,
-                'device': 'auto'
-            }
-            model_registry.load_model("patch_classifier", patch_classifier_config)
+        errors = validate_model_paths("patch_classifier", mcfg)
+        if errors:
+            for e in errors:
+                print(f"⚠ patch_classifier: {e}")
+            print("  Model registered but not loaded.")
+        else:
+            model_registry.load_model(
+                "patch_classifier",
+                {
+                    "model_path": get_absolute_path(mcfg["path"]),
+                    "patch_size": mcfg.get("patch_size", 64),
+                    "batch_size": mcfg.get("batch_size", 32),
+                    "classifier_threshold": mcfg.get("classifier_threshold", 0.8),
+                    "generate_gradcam": mcfg.get("generate_gradcam", True),
+                    "device": mcfg.get("device", "auto"),
+                },
+            )
             print("✓ Loaded PatchClassifier model")
-        else:
-            print(f"⚠ PatchClassifier enabled but weights not found at: {patch_classifier_path}")
-            print("  Model registered but not loaded. Provide weights to use it.")
-    
-    # Register and load EC Cancer model (if enabled)
-    if config.get("ec_cancer_enabled", False):
+
+    # ec_cancer
+    mcfg = models_cfg.get("ec_cancer") or {}
+    if model_enabled_for_pool("ec_cancer", mcfg, _REPLICA_POOL):
         model_registry.register_model_class("ec_cancer", ECCancerModel)
-        
-        # Check if all required model paths exist
-        ec_paths = {
-            'patch_classifier_model_path': config.get("ec_cancer_patch_classifier_path"),
-            'representation_generator_model_path': config.get("ec_cancer_representation_path"),
-            'varmil_model_path': config.get("ec_cancer_varmil_path")
-        }
-        
-        all_paths_exist = all(
-            path and Path(get_absolute_path(path)).exists() 
-            for path in ec_paths.values()
-        )
-        
-        if all_paths_exist:
-            ec_cancer_config = {
-                'patch_classifier_model_path': get_absolute_path(ec_paths['patch_classifier_model_path']),
-                'representation_generator_model_path': get_absolute_path(ec_paths['representation_generator_model_path']),
-                'varmil_model_path': get_absolute_path(ec_paths['varmil_model_path']),
-                'device': 'auto'
-            }
-            model_registry.load_model("ec_cancer", ec_cancer_config)
+        errors = validate_model_paths("ec_cancer", mcfg)
+        if errors:
+            for e in errors:
+                print(f"⚠ ec_cancer: {e}")
+            print("  Model registered but not loaded.")
+        else:
+            model_registry.load_model(
+                "ec_cancer",
+                {
+                    "patch_classifier_model_path": get_absolute_path(mcfg["patch_classifier_path"]),
+                    "representation_generator_model_path": get_absolute_path(mcfg["representation_path"]),
+                    "varmil_model_path": get_absolute_path(mcfg["varmil_path"]),
+                    "device": mcfg.get("device", "auto"),
+                },
+            )
             print("✓ Loaded EC Cancer model")
-        else:
-            missing = [k for k, v in ec_paths.items() if not v or not Path(get_absolute_path(v)).exists()]
-            print(f"⚠ EC Cancer enabled but some model weights not found:")
-            for m in missing:
-                print(f"  - {m}: {ec_paths.get(m, 'not specified')}")
-            print("  Model registered but not loaded. Provide all weights to use it.")
-    
-    # Register and load HoVer-Net model (if enabled)
-    if config.get("hovernet_enabled", False):
+
+    # hovernet
+    mcfg = models_cfg.get("hovernet") or {}
+    if model_enabled_for_pool("hovernet", mcfg, _REPLICA_POOL):
         model_registry.register_model_class("hovernet", HoVerNetModel)
-        
-        # Use new config structure with model_variant
-        default_variant = config.get("hovernet_default_variant", "pannuke")
-        hovernet_config = {
-            'model_variant': default_variant,
-            'device': config.get("hovernet_device", "cuda"),
-            'gpu_ids': config.get("hovernet_gpu_ids", [0]),
-            'batch_size': config.get("hovernet_batch_size", 8)
-        }
-        
-        # Check if the default variant's checkpoint exists
-        hovernet_models = config.get("hovernet_models", {})
-        if default_variant in hovernet_models:
-            checkpoint_path = hovernet_models[default_variant].get('checkpoint')
-            if checkpoint_path and Path(get_absolute_path(checkpoint_path)).exists():
-                model_registry.load_model("hovernet", hovernet_config)
-                print(f"✓ Loaded HoVer-Net model (variant: {default_variant})")
-            else:
-                print(f"⚠ HoVer-Net enabled but checkpoint not found: {checkpoint_path}")
-                print("  Model registered but not loaded. Provide weights to use it.")
+        errors = validate_model_paths("hovernet", mcfg)
+        if errors:
+            for e in errors:
+                print(f"⚠ hovernet: {e}")
+            print("  Model registered but not loaded.")
         else:
-            print(f"⚠ HoVer-Net enabled but variant '{default_variant}' not found in config")
-            print("  Model registered but not loaded. Configure hovernet_models in config.json.")
+            default_variant = mcfg.get("default_variant", "pannuke")
+            model_registry.load_model(
+                "hovernet",
+                {
+                    "model_variant": default_variant,
+                    "device": mcfg.get("device", "cuda"),
+                    "gpu_ids": mcfg.get("gpu_ids", [0]),
+                    "batch_size": mcfg.get("batch_size", 8),
+                },
+            )
+            print(f"✓ Loaded HoVer-Net model (variant: {default_variant})")
+
+    # pdac
+    mcfg = models_cfg.get("pdac") or {}
+    if model_enabled_for_pool("pdac", mcfg, _REPLICA_POOL):
+        from models.pdac_model import PDACModel
+
+        model_registry.register_model_class("pdac", PDACModel)
+        errors = validate_model_paths("pdac", mcfg)
+        if errors:
+            for e in errors:
+                print(f"✗ pdac: {e}")
+            raise RuntimeError(f"pdac enabled but paths missing: {errors}")
+        pdac_config = {
+            "package_root": abs_path(mcfg["package_root"]),
+            "device": mcfg.get("device", "auto"),
+            "batch_size": mcfg.get("batch_size", 16),
+            "lazy_load": mcfg.get("lazy_load", True),
+        }
+        model_registry.load_model("pdac", pdac_config)
+        print(f"✓ Registered PDAC model (lazy={pdac_config['lazy_load']}) from {pdac_config['package_root']}")
+
+    loaded = model_registry.list_loaded_models()
+    print(f"Pool {_REPLICA_POOL} loaded models: {loaded}")
 
 
 def warmup_models():
@@ -208,6 +228,10 @@ def warmup_models():
     for name in model_registry.list_loaded_models():
         model = model_registry.get_model(name)
         if model is None:
+            continue
+        # PDAC GigaPath is ~10 GB; keep it lazy until a real request.
+        if name == "pdac" or getattr(model, "_lazy", False):
+            print(f"↷ Skipping warmup for {name} (lazy / heavy model)")
             continue
         started = time.perf_counter()
         try:
@@ -458,141 +482,26 @@ async def auto_name_regions_api(request: dict):
 # REFACTORED: Processing Endpoints Using Model Registry
 # ============================================================================
 
+_UPLOAD_GONE = {
+    "status": "error",
+    "message": (
+        "Upload-based process APIs are retired. Use POST /process_region_from_slide "
+        "(sync debug) or POST /inference/jobs (async)."
+    ),
+    "canonical": ["/process_region_from_slide", "/inference/jobs"],
+}
+
+
 @app.post("/process_region_annotation")
 async def process_region_annotation_api(
-    region: UploadFile = File(...),
-    mask: str = Form(...),
+    region: UploadFile = File(None),
+    mask: str = Form(None),
     region_id: str = Form(""),
-    model_name: str = Form("deepliif"),  # NEW: Allow model selection
-    hyperparameters: str = Form(None)  # NEW: Model hyperparameters as JSON string
+    model_name: str = Form("deepliif"),
+    hyperparameters: str = Form(None),
 ):
-    """
-    Process a region with annotation using specified AI model.
-    
-    NEW: Now supports multiple models via model_name parameter.
-    NEW: Accepts hyperparameters as JSON string.
-    """
-    # Validate region file is JPEG
-    region_ct = (region.content_type or "").lower()
-    region_fn = (region.filename or "").lower()
-    is_region_jpeg = region_ct in {"image/jpeg", "image/jpg"} or \
-                     region_fn.endswith((".jpg", ".jpeg"))
-    
-    if not is_region_jpeg:
-        return JSONResponse(
-            {"status": "error", "message": "Region file must be JPEG."},
-            status_code=400
-        )
-    
-    # Get the model from registry
-    model = model_registry.get_model(model_name)
-    if not model:
-        return JSONResponse(
-            {
-                "status": "error",
-                "message": f"Model '{model_name}' not found. "
-                          f"Available: {model_registry.list_loaded_models()}"
-            },
-            status_code=400
-        )
-    
-    # Read and process region image
-    region_bytes = await region.read()
-    region_image = Image.open(BytesIO(region_bytes)).convert("RGB")
-    
-    # Parse annotation points
-    try:
-        points_payload = json.loads(mask)
-    except Exception:
-        return JSONResponse(
-            {"status": "error", "message": "Invalid JSON in 'mask' field."},
-            status_code=400
-        )
-    
-    # Convert points to list of tuples
-    def to_points(obj):
-        pts = []
-        if isinstance(obj, dict) and "points" in obj:
-            obj = obj["points"]
-        if isinstance(obj, list):
-            for p in obj:
-                if isinstance(p, dict):
-                    x = p.get("x", p.get("X"))
-                    y = p.get("y", p.get("Y"))
-                    if x is None or y is None:
-                        continue
-                    pts.append((int(round(float(x))), int(round(float(y)))))
-                elif isinstance(p, (list, tuple)) and len(p) >= 2:
-                    pts.append((int(round(float(p[0]))), int(round(float(p[1])))))
-        return pts
-    
-    annotation_points = to_points(points_payload)
-    if len(annotation_points) < 3:
-        return JSONResponse(
-            {"status": "error", 
-             "message": "'mask' must contain at least three points."},
-            status_code=400
-        )
-    
-    # Build a binary mask from polygon points
-    w, h = region_image.size
-    mask_image = Image.new("L", (w, h), 0)
-    draw = ImageDraw.Draw(mask_image)
-    clamped = [(max(0, min(w - 1, x)), max(0, min(h - 1, y))) for x, y in annotation_points]
-    draw.polygon(clamped, outline=255, fill=255)
-    
-    # Parse hyperparameters if provided
-    model_hyperparameters = None
-    if hyperparameters:
-        try:
-            model_hyperparameters = json.loads(hyperparameters)
-            print(f"Received hyperparameters: {model_hyperparameters}")
-        except json.JSONDecodeError as e:
-            return JSONResponse(
-                {"status": "error", "message": f"Invalid hyperparameters JSON: {e}"},
-                status_code=400
-            )
-    
-    # NEW: Use model's process method with generated mask
-    try:
-        result = model.process(
-            image=region_image,
-            mask=mask_image,
-            annotation_points=None,
-            hyperparameters=model_hyperparameters
-        )
-    except Exception as e:
-        print(f"ERROR: Model {model_name} failed to process region: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return JSONResponse(
-            {"status": "error", "message": f"Model processing failed: {str(e)}"},
-            status_code=500
-        )
-    
-    if not result['success']:
-        return JSONResponse(
-            {"status": "error", "message": result.get('error', 'Unknown error')},
-            status_code=500
-        )
-    
-    # Convert processed image to base64
-    buffer = BytesIO()
-    result['processed_image'].save(buffer, format="PNG")
-    buffer.seek(0)
-    img_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
-    # save image to disk for debugging
-    # result['processed_image'].save(f"debug_{model_name}_processed.png")
-    print(f"Model {model_name} processed region successfully.")
-    return {
-        "status": "success",
-        "processed_image_base64": img_base64,
-        "score": result['scores'],
-        "str_result": result.get('str_result', 'Processing complete'),
-        "region_id": region_id,
-        "model_used": model_name,
-        "model_version": model.model_version
-    }
+    """Deprecated — use /process_region_from_slide or /inference/jobs."""
+    return JSONResponse(_UPLOAD_GONE, status_code=410)
 
 
 class SlideRegionRequest(BaseModel):
@@ -608,59 +517,49 @@ class SlideRegionRequest(BaseModel):
     region_id: str = ""
 
 
-@app.post("/process_region_from_slide")
-def process_region_from_slide_api(request: SlideRegionRequest):
-    """Process a region the caller identifies by slide path and coordinates.
+def run_slide_region_inference(
+    request_data: Dict[str, Any],
+    *,
+    hold_lock: bool = True,
+) -> Dict[str, Any]:
+    """Shared core for sync /process_region_from_slide and async inference jobs.
 
-    The counterpart to ``/process_region_annotation``, for callers that share a
-    filesystem with this service. Reading the region here instead of receiving
-    it as an upload skips a full-resolution read, a JPEG round-trip and a
-    multi-hundred-megabyte POST, and lets OpenSlide serve the request from
-    whichever pyramid level already matches the requested downsample.
-
-    The overlay comes back covering only the region, tagged with the level-0
-    box it occupies, so the caller can place it without building a slide-sized
-    canvas around it.
+    ``hold_lock=False`` when the caller (async worker) already holds
+    ``_inference_lock``.
     """
-    model = model_registry.get_model(request.model_name)
+    model_name = request_data.get("model_name") or "deepliif"
+    model = model_registry.get_model(model_name)
     if not model:
-        return JSONResponse(
-            {
-                "status": "error",
-                "message": f"Model '{request.model_name}' not found. "
-                           f"Available: {model_registry.list_loaded_models()}"
-            },
-            status_code=400
-        )
+        return {
+            "status": "error",
+            "message": (
+                f"Model '{model_name}' not found on this replica "
+                f"(pool={_REPLICA_POOL}). Available: {model_registry.list_loaded_models()}"
+            ),
+        }
 
     try:
         slide_path = resolve_slide_path(
-            request.slide_path, config.get("slide_roots", [])
+            request_data["slide_path"], config.get("slide_roots", [])
         )
         region_image, info = read_region(
             slide_path,
-            request.roi_bbox,
-            downsample=request.downsample,
+            request_data["roi_bbox"],
+            downsample=float(request_data.get("downsample") or 1.0),
             max_pixels=config.get("max_region_pixels") or None,
         )
     except SlideAccessError as e:
-        return JSONResponse({"status": "error", "message": str(e)}, status_code=400)
+        return {"status": "error", "message": str(e)}
     except Exception as e:
-        print(f"ERROR: failed to read region from {request.slide_path}: {e}")
+        print(f"ERROR: failed to read region from {request_data.get('slide_path')}: {e}")
         import traceback
         traceback.print_exc()
-        return JSONResponse(
-            {"status": "error", "message": f"Failed to read slide region: {e}"},
-            status_code=500
-        )
+        return {"status": "error", "message": f"Failed to read slide region: {e}"}
 
     bbox = info["bbox"]
-    mask_image = polygon_mask(request.polygon, bbox, info["size"])
+    mask_image = polygon_mask(request_data.get("polygon"), bbox, info["size"])
 
-    # Models that size their tiles by physical scale need to know what a pixel
-    # of this region is worth. Only pass it to those that ask, so the rest do
-    # not have to tolerate an unexpected hyperparameter.
-    hyperparameters = dict(request.hyperparameters or {})
+    hyperparameters = dict(request_data.get("hyperparameters") or {})
     if getattr(model, "accepts_mpp", False):
         if info.get("mpp"):
             hyperparameters.setdefault("mpp", info["mpp"])
@@ -668,41 +567,46 @@ def process_region_from_slide_api(request: SlideRegionRequest):
             hyperparameters.setdefault("downsample", info["downsample"])
 
     queued_at = time.perf_counter()
+    started_at = queued_at
+    elapsed = 0.0
     try:
-        with _inference_lock:
+        def _run():
+            nonlocal started_at, elapsed
             started_at = time.perf_counter()
             result = model.process(
                 image=region_image,
                 mask=mask_image,
                 annotation_points=None,
-                hyperparameters=hyperparameters
+                hyperparameters=hyperparameters,
             )
             elapsed = time.perf_counter() - started_at
+            return result
+
+        if hold_lock:
+            with _inference_lock:
+                result = _run()
+        else:
+            result = _run()
     except Exception as e:
         region_image.close()
         mask_image.close()
-        print(f"ERROR: Model {request.model_name} failed to process region: {e}")
+        print(f"ERROR: Model {model_name} failed to process region: {e}")
         import traceback
         traceback.print_exc()
-        return JSONResponse(
-            {"status": "error", "message": f"Model processing failed: {e}"},
-            status_code=500
-        )
+        return {"status": "error", "message": f"Model processing failed: {e}"}
 
-    processed = result.get('processed_image') if result['success'] else None
+    processed = result.get("processed_image") if result.get("success") else None
     try:
-        if not result['success']:
-            return JSONResponse(
-                {"status": "error", "message": result.get('error', 'Unknown error')},
-                status_code=500
-            )
+        if not result.get("success"):
+            return {
+                "status": "error",
+                "message": result.get("error", "Unknown error"),
+            }
 
         x0, y0, w, h = bbox
-
-        # Emit the overlay at the resolution it will be displayed at.
-        # Downscaling here rather than after transport keeps the response
-        # small, and the caller never has to guess the overlay's scale.
-        overlay_downsample = float(request.overlay_downsample or info["downsample"])
+        overlay_downsample = float(
+            request_data.get("overlay_downsample") or info["downsample"]
+        )
         overlay_downsample = max(1.0, overlay_downsample)
         overlay_w = max(1, int(round(w / overlay_downsample)))
         overlay_h = max(1, int(round(h / overlay_downsample)))
@@ -715,8 +619,6 @@ def process_region_from_slide_api(request: SlideRegionRequest):
         processed.save(buffer, format="PNG", optimize=True)
         img_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
     finally:
-        # Some models hand back the input image itself as their overlay, so
-        # none of these can be released until the PNG has been written.
         for image in (processed, region_image, mask_image):
             if image is not None:
                 image.close()
@@ -730,16 +632,13 @@ def process_region_from_slide_api(request: SlideRegionRequest):
         "overlay_downsample": w / overlay_w if overlay_w else overlay_downsample,
         "processed_downsample": info["downsample"],
         "slide_level_used": info["level"],
-        "score": result['scores'],
-        "str_result": result.get('str_result', 'Processing complete'),
-        "region_id": request.region_id,
-        "model_used": request.model_name,
+        "score": result["scores"],
+        "str_result": result.get("str_result", "Processing complete"),
+        "region_id": request_data.get("region_id") or "",
+        "model_used": model_name,
         "model_version": model.model_version,
-        "metadata": result.get('metadata') or {},
+        "metadata": result.get("metadata") or {},
         "timing": {
-            # Time spent waiting on the replica's lock is the honest measure of
-            # queueing, and it is the first thing to look at when a job is slow
-            # despite the model itself being fast.
             "queue_seconds": round(started_at - queued_at, 3),
             "model_seconds": round(elapsed, 3),
             "region_pixels": info["size"][0] * info["size"][1],
@@ -747,78 +646,93 @@ def process_region_from_slide_api(request: SlideRegionRequest):
     }
 
 
-@app.post("/process_region")
-async def process_region_api(
-    region: UploadFile = File(...),
-    mask: UploadFile = File(...),
-    model_name: str = Form("deepliif")  # NEW: Model selection
-):
-    """
-    Process a region with a mask file using specified AI model.
-    
-    NEW: Now supports multiple models via model_name parameter.
-    """
-    # Validate file types
-    is_region_png = region.filename.lower().endswith(".png") or \
-                    region.content_type == "image/png"
-    is_mask_png = mask.filename.lower().endswith(".png") or \
-                  mask.content_type == "image/png"
-    
-    if not is_region_png or not is_mask_png:
-        return JSONResponse(
-            {"status": "error", "message": "Both files must be PNG."},
-            status_code=400
-        )
-    
-    # Get model
-    model = model_registry.get_model(model_name)
-    if not model:
+@app.post("/process_region_from_slide")
+def process_region_from_slide_api(request: SlideRegionRequest):
+    """Sync debug/smoke path — same core as async ``/inference/jobs``."""
+    result = run_slide_region_inference(request.model_dump())
+    if result.get("status") == "error":
+        return JSONResponse(result, status_code=400 if "not found" in (result.get("message") or "") else 500)
+    return result
+
+
+@app.post("/inference/jobs")
+def create_inference_job(request: SlideRegionRequest):
+    """Enqueue region inference; returns immediately with a job id."""
+    model_name = request.model_name
+    if model_name not in model_registry.list_loaded_models():
+        # Still enqueue only if this replica owns the model; Aimviewer routes by pool.
         return JSONResponse(
             {
                 "status": "error",
-                "message": f"Model '{model_name}' not found. "
-                          f"Available: {model_registry.list_loaded_models()}"
+                "message": (
+                    f"Model '{model_name}' not loaded on pool={_REPLICA_POOL}. "
+                    f"Available: {model_registry.list_loaded_models()}"
+                ),
             },
-            status_code=400
+            status_code=400,
         )
-    
-    # Read images
-    region_bytes = await region.read()
-    mask_bytes = await mask.read()
-    
-    region_image = Image.open(BytesIO(region_bytes)).convert("RGB")
-    mask_image = Image.open(BytesIO(mask_bytes)).convert("L")
-    
-    # NEW: Use model's process method
-    result = model.process(
-        image=region_image,
-        mask=mask_image,
-        hyperparameters=None
-    )
-    
-    if not result['success']:
-        return JSONResponse(
-            {"status": "error", "message": result.get('error', 'Unknown error')},
-            status_code=500
-        )
-    
-    # Convert to base64
-    buffer = BytesIO()
-    result['processed_image'].save(buffer, format="PNG")
-    buffer.seek(0)
-    img_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
-    
-    return {
-        "status": "success",
-        "processed_image_base64": img_base64,
-        "score": result['scores'],
-        "str_result": result.get('str_result', 'Processing complete'),
-        "model_used": model_name
-    }
+    created = inference_jobs.create_job(config, _REPLICA_POOL, request.model_dump())
+    return created
+
+
+@app.get("/inference/jobs/{job_id}")
+def get_inference_job(job_id: str):
+    job = inference_jobs.get_job(config, job_id)
+    if not job:
+        return JSONResponse({"status": "error", "message": "Job not found"}, status_code=404)
+    # Never return huge base64 in the poll body.
+    public = {k: v for k, v in job.items() if k not in ("payload",)}
+    public.pop("processed_image_base64", None)
+    return public
+
+
+@app.get("/inference/jobs/{job_id}/overlay")
+def get_inference_job_overlay(job_id: str):
+    from fastapi.responses import Response
+
+    overlay = inference_jobs.get_overlay(config, job_id)
+    if overlay is None:
+        job = inference_jobs.get_job(config, job_id)
+        if not job:
+            return JSONResponse({"status": "error", "message": "Job not found"}, status_code=404)
+        if job.get("status") != inference_jobs.STATUS_SUCCEEDED:
+            return JSONResponse(
+                {"status": "error", "message": f"Job status is {job.get('status')}"},
+                status_code=409,
+            )
+        return JSONResponse({"status": "error", "message": "Overlay not available"}, status_code=404)
+    return Response(content=overlay, media_type="image/png")
+
+
+@app.post("/inference/jobs/{job_id}/cancel")
+def cancel_inference_job(job_id: str):
+    job = inference_jobs.request_cancel(config, job_id)
+    if not job:
+        return JSONResponse({"status": "error", "message": "Job not found"}, status_code=404)
+    return {"job_id": job_id, "status": job["status"], "cancel_requested": job.get("cancel_requested")}
+
+
+@app.post("/process_region")
+async def process_region_api(
+    region: UploadFile = File(None),
+    mask: UploadFile = File(None),
+    model_name: str = Form("deepliif"),
+):
+    """Deprecated — use /process_region_from_slide or /inference/jobs."""
+    return JSONResponse(_UPLOAD_GONE, status_code=410)
+
+
+# Per-replica async inference worker (must start after run_slide_region_inference exists).
+inference_jobs.start_worker(
+    config,
+    _REPLICA_POOL,
+    process_fn=lambda payload: run_slide_region_inference(payload, hold_lock=False),
+    inference_lock=_inference_lock,
+)
 
 
 # ============================================================================
-# NEW: Model Management Endpoints
+# Model Management Endpoints
 # ============================================================================
 
 @app.get("/health")
@@ -848,6 +762,7 @@ async def health():
     return {
         "status": "ok",
         "port": os.environ.get("AI_REPLICA_PORT"),
+        "pool": _REPLICA_POOL,
         "gpu": gpu,
         "mask_generator": mask_gen is not None,
         "mask_generator_backend": getattr(mask_gen, "model_name", None),
@@ -877,6 +792,9 @@ async def get_model_info(model_name: str):
     """
     info = model_registry.get_model_info(model_name)
     if info:
+        mcfg = (config.get("models") or {}).get(model_name) or {}
+        info = dict(info)
+        info["pool"] = mcfg.get("pool") or _REPLICA_POOL
         return info
     else:
         return JSONResponse(

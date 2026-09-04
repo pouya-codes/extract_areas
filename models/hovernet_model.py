@@ -42,7 +42,13 @@ def load_model_configs_from_file():
     try:
         with open(config_path, 'r') as f:
             config = json.load(f)
-            return config.get('hovernet_models', {})
+        # Structured schema: models.hovernet.variants; legacy: hovernet_models
+        models = config.get("models") or {}
+        hovernet = models.get("hovernet") or {}
+        variants = hovernet.get("variants")
+        if variants:
+            return variants
+        return config.get("hovernet_models", {})
     except Exception as e:
         print(f"Warning: Could not load hovernet_models from config.json: {e}")
         # Return default fallback
@@ -366,10 +372,6 @@ class HoVerNetModel(BaseAIModel):
                 # Apply mask
                 img_np[mask_np == 0] = 255  # White out non-masked areas
 
-            # Run inference
-            # save image to disk for debugging
-            cv2.imwrite("debug_input_image.png", cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR))
-            
             # Try inference with automatic batch size reduction on OOM
             max_retries = 3
             current_batch_size = params.get('batch_size', 32)
@@ -677,50 +679,53 @@ class HoVerNetModel(BaseAIModel):
 
         pred_inst = watershed(-overall, markers, mask=blb)
 
-        # Extract instance information
+        # Extract instance information.
+        #
+        # Every measurement below is taken on the nucleus' own bounding box
+        # rather than on a full-image boolean mask. A region holds thousands of
+        # nuclei, and touching all four megapixels once per nucleus is what
+        # used to make this step take minutes.
         inst_info_dict = {}
-        inst_id_list = np.unique(pred_inst)[1:]  # Exclude background
+        for index, bounds in enumerate(ndi.find_objects(pred_inst)):
+            if bounds is None:  # label not present after the size filter
+                continue
+            inst_id = index + 1
+            rmin, rmax = bounds[0].start, bounds[0].stop
+            cmin, cmax = bounds[1].start, bounds[1].stop
 
-        for inst_id in inst_id_list:
-            inst_map = pred_inst == inst_id
+            crop = (pred_inst[bounds] == inst_id).astype(np.uint8)
 
-            # Get bounding box
-            rmin, cmin, rmax, cmax = self._get_bounding_box(inst_map)
-
-            # Get centroid
-            inst_moment = cv2.moments(inst_map.astype(np.uint8))
+            # Contours and moments come back in crop coordinates, so shift
+            # them back into the region's frame.
+            inst_moment = cv2.moments(crop)
             if inst_moment['m00'] != 0:
-                cx = inst_moment['m10'] / inst_moment['m00']
-                cy = inst_moment['m01'] / inst_moment['m00']
+                cx = inst_moment['m10'] / inst_moment['m00'] + cmin
+                cy = inst_moment['m01'] / inst_moment['m00'] + rmin
             else:
-                cy, cx = ndi.center_of_mass(inst_map)
+                cy, cx = ndi.center_of_mass(crop)
+                cx, cy = cx + cmin, cy + rmin
 
-            # Get contour
             contours, _ = cv2.findContours(
-                inst_map.astype(np.uint8),
-                cv2.RETR_EXTERNAL,
-                cv2.CHAIN_APPROX_SIMPLE
+                crop, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
             )
-
             if len(contours) > 0:
                 contour = contours[0].squeeze()
                 if contour.ndim == 1:
                     contour = contour.reshape(-1, 2)
+                contour = contour + np.array([cmin, rmin])
             else:
                 contour = np.array([[cmin, rmin], [cmax, rmax]])
 
-            # Get type if available
             inst_type = None
             if self.nr_types is not None:
-                inst_type_map = pred_type[inst_map]
-                inst_type = int(np.median(inst_type_map))
+                inst_type = int(np.median(pred_type[bounds][crop > 0]))
 
             inst_info_dict[int(inst_id)] = {
                 'bbox': np.array([[rmin, cmin], [rmax, cmax]]),
                 'centroid': np.array([cx, cy]),
                 'contour': contour,
                 'type': inst_type,
-                'area': np.sum(inst_map)
+                'area': int(crop.sum()),
             }
 
         return pred_inst, inst_info_dict
@@ -741,23 +746,21 @@ class HoVerNetModel(BaseAIModel):
         draw_centroids: bool = True
     ) -> np.ndarray:
         """Create visualization overlay with transparent background and markers only."""
-        # Create transparent RGBA overlay
-        overlay = np.zeros((*inst_map.shape, 4), dtype=np.uint8)
-
         # Generate random colors for each instance
         np.random.seed(0)
         inst_ids = list(inst_info_dict.keys())
         colors = np.random.randint(50, 255, size=(len(inst_ids) + 1, 3))
 
-        # Draw filled instances with transparency
+        # Fill every instance in one pass. Comparing the whole instance map
+        # against one id at a time costs a full-image scan per nucleus, which
+        # on a region with a few thousand nuclei dominates the entire request.
+        max_id = int(inst_map.max()) if inst_map.size else 0
+        palette = np.zeros((max_id + 1, 4), dtype=np.uint8)
         for idx, inst_id in enumerate(inst_ids, start=1):
-            mask = inst_map == inst_id
-            # Set RGBA color (R, G, B, A) with proper alpha
-            r, g, b = colors[idx]
-            overlay[mask, 0] = r
-            overlay[mask, 1] = g
-            overlay[mask, 2] = b
-            overlay[mask, 3] = 200  # Alpha channel
+            if 0 < int(inst_id) <= max_id:
+                palette[int(inst_id), :3] = colors[idx]
+                palette[int(inst_id), 3] = 200  # Alpha channel
+        overlay = palette[np.clip(inst_map, 0, max_id)]
 
         # Draw contours in RGB mode (OpenCV draws in BGR)
         for inst_id, info in inst_info_dict.items():
@@ -779,17 +782,7 @@ class HoVerNetModel(BaseAIModel):
                 )
         
         # Convert BGR to RGB (OpenCV uses BGR, PIL expects RGB)
-        overlay_rgb = cv2.cvtColor(overlay, cv2.COLOR_BGRA2RGBA)
-        
-        # save overlay for debugging
-        cv2.imwrite("debug_overlay.png", overlay_rgb)
-        # save overlay on original image for debugging
-        blended = cv2.addWeighted(
-            cv2.cvtColor(image, cv2.COLOR_RGB2BGR), 0.7,
-            cv2.cvtColor(overlay_rgb[..., :3], cv2.COLOR_RGBA2BGR), 0.3, 0
-        )
-        cv2.imwrite("debug_blended.png", blended)
-        return overlay_rgb
+        return cv2.cvtColor(overlay, cv2.COLOR_BGRA2RGBA)
 
     def _compute_scores(self, inst_info_dict: Dict) -> Dict[str, Any]:
         """Compute quantitative scores from predictions."""
