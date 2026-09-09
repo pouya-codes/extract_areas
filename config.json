@@ -94,7 +94,7 @@
       "lazy_load": true,
       "package_root": "/data/models/PDAC_GigaPath_1024_FT",
       "device": "auto",
-      "batch_size": 16
+      "batch_size": 0
     }
   }
 }

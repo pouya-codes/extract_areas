@@ -59,7 +59,8 @@ class PDACModel(BaseAIModel):
             "tumor_threshold": 0.7,
             "tissue_threshold": 0.5,
             "bag_size": 512,
-            "batch_size": 16,
+            # 0 = auto: largest batch that fits in VRAM for each stage.
+            "batch_size": 0,
             "model_input_size": 224,
             "heatmap_mode": "attention",  # attention | tumor
         }
@@ -76,6 +77,7 @@ class PDACModel(BaseAIModel):
         self._hf_token = None
         self._stage1_path = None
         self._stage2_path = None
+        self._auto_batch_cache: Dict[str, int] = {}
 
     def initialize(self, config: Dict[str, Any]) -> None:
         package_root = config.get("package_root") or config.get("model_dir")
@@ -104,10 +106,11 @@ class PDACModel(BaseAIModel):
             ):
                 if key in self.defaults:
                     self.hyperparameters[key] = self.defaults[key]
-        # Prefer a smaller default batch on 16 GB T4s sharing the card.
-        self.hyperparameters["batch_size"] = int(
-            config.get("batch_size", self.hyperparameters.get("batch_size", 16))
-        )
+        # Prefer config; 0 / "auto" means probe the largest batch that fits.
+        raw_bs = config.get("batch_size", self.hyperparameters.get("batch_size", 0))
+        if isinstance(raw_bs, str) and raw_bs.strip().lower() in ("auto", ""):
+            raw_bs = 0
+        self.hyperparameters["batch_size"] = int(raw_bs)
 
         device_name = config.get("device", "auto")
         if device_name == "auto":
@@ -290,6 +293,7 @@ class PDACModel(BaseAIModel):
                 "patch_size_region": region_patch,
                 "stride_region": region_stride,
                 "downsample": downsample,
+                "batch_size_used": result.get("batch_size_used"),
             },
             "str_result": str_result,
             "metadata": {
@@ -339,10 +343,13 @@ class PDACModel(BaseAIModel):
             },
             "batch_size": {
                 "type": "int",
-                "default": int(self.hyperparameters.get("batch_size", 16)),
-                "min": 1,
-                "max": 64,
-                "description": "GPU batch size for patch encoding",
+                "default": int(self.hyperparameters.get("batch_size", 0)),
+                "min": 0,
+                "max": 128,
+                "description": (
+                    "GPU batch size for patch encoding. "
+                    "0 = auto (largest batch that fits in VRAM)."
+                ),
             },
             "heatmap_mode": {
                 "type": "choice",
@@ -413,6 +420,38 @@ class PDACModel(BaseAIModel):
                     coords.append((x0, y0))
         return coords
 
+    def _resolve_batch_size(self, stage: str, sample: torch.Tensor, requested: int) -> int:
+        """Return a fixed batch size, or the largest that fits for this stage."""
+        if requested and requested > 0:
+            return max(1, int(requested))
+        if stage in self._auto_batch_cache:
+            return self._auto_batch_cache[stage]
+
+        from auto_batch import find_max_batch_size
+
+        assert self.device is not None
+        channels, height, width = sample.shape
+        model = self.stage1_model if stage == "stage1" else self.feature_encoder
+        assert model is not None
+
+        def try_forward(n: int) -> None:
+            batch = sample.unsqueeze(0).expand(n, channels, height, width).contiguous()
+            batch = batch.to(self.device, non_blocking=True)
+            with torch.no_grad():
+                if stage == "encoder" and self.device.type == "cuda":
+                    with torch.autocast("cuda"):
+                        model(batch)
+                else:
+                    model(batch)
+            del batch
+            if self.device.type == "cuda":
+                torch.cuda.empty_cache()
+
+        best = find_max_batch_size(try_forward, max_size=64, min_size=1)
+        self._auto_batch_cache[stage] = best
+        print(f"PDAC auto batch_size[{stage}] = {best}")
+        return best
+
     def _infer_region(
         self,
         rgb: Image.Image,
@@ -420,24 +459,35 @@ class PDACModel(BaseAIModel):
         region_patch: int,
         params: Dict[str, Any],
     ) -> Dict[str, Any]:
+        from progress_report import report_progress
+
         assert self.device is not None
         assert self.stage1_model is not None
         assert self.feature_encoder is not None
         assert self.mil_model is not None
         assert self.transform is not None
 
-        batch_size = int(params.get("batch_size", 16))
+        requested_bs = int(params.get("batch_size", 0) or 0)
         tumor_threshold = float(params.get("tumor_threshold", 0.7))
         model_input = int(params.get("model_input_size", 224))
         # Re-bind transform if input size overridden
         if model_input != int(self.hyperparameters.get("model_input_size", 224)):
             self.transform = get_eval_transform(model_input)
 
+        n_coords = len(coords)
+        report_progress(
+            progress_stage="tiling",
+            progress_label=f"Preparing {n_coords} patches…",
+            patch_done=0,
+            patch_total=n_coords,
+            progress_percent=2,
+        )
+
         # Build all transformed patches once (CPU), then run Stage-1 and the
         # feature encoder in two GPU passes so only one ViT-G is resident.
         tensors = []
         tissue_coords: List[Tuple[int, int]] = []
-        for x, y in coords:
+        for i, (x, y) in enumerate(coords):
             crop = rgb.crop((x, y, x + region_patch, y + region_patch))
             if crop.size != (region_patch, region_patch):
                 padded = Image.new("RGB", (region_patch, region_patch), (255, 255, 255))
@@ -446,6 +496,14 @@ class PDACModel(BaseAIModel):
             crop = crop.resize((model_input, model_input), Image.LANCZOS)
             tensors.append(self.transform(crop))
             tissue_coords.append((x, y))
+            if (i + 1) % 32 == 0 or i + 1 == n_coords:
+                report_progress(
+                    progress_stage="tiling",
+                    progress_label=f"Preparing patches {i + 1} / {n_coords}",
+                    patch_done=i + 1,
+                    patch_total=n_coords,
+                    progress_percent=max(2, int(5 * (i + 1) / max(1, n_coords))),
+                )
         if not tensors:
             return {
                 "error": "no tissue patches found in region",
@@ -457,6 +515,14 @@ class PDACModel(BaseAIModel):
         tumor_probs: List[torch.Tensor] = []
         keep_flags: List[bool] = []
         self._place_gigapath("stage1")
+        batch_size = self._resolve_batch_size("stage1", tensors[0], requested_bs)
+        report_progress(
+            progress_stage="stage1",
+            progress_label=f"Stage-1 tumor filter · 0 / {n_before} patches (batch {batch_size})",
+            patch_done=0,
+            patch_total=n_before,
+            progress_percent=5,
+        )
         for start in range(0, n_before, batch_size):
             batch = torch.stack(tensors[start : start + batch_size]).to(
                 self.device, non_blocking=True
@@ -466,6 +532,16 @@ class PDACModel(BaseAIModel):
                 probs = torch.softmax(logits, dim=1)[:, 0]  # P(tumor)
             tumor_probs.append(probs.cpu())
             keep_flags.extend((probs >= tumor_threshold).cpu().tolist())
+            done = min(start + batch_size, n_before)
+            # Stage-1 occupies ~5–50% of the bar.
+            pct = 5 + int(45 * done / max(1, n_before))
+            report_progress(
+                progress_stage="stage1",
+                progress_label=f"Stage-1 tumor filter · {done} / {n_before} patches",
+                patch_done=done,
+                patch_total=n_before,
+                progress_percent=pct,
+            )
 
         tissue_tp = torch.cat(tumor_probs)
         kept_coords = [c for c, k in zip(tissue_coords, keep_flags) if k]
@@ -480,6 +556,17 @@ class PDACModel(BaseAIModel):
 
         all_feats = []
         self._place_gigapath("encoder")
+        batch_size = self._resolve_batch_size("encoder", kept_tensors[0], requested_bs)
+        report_progress(
+            progress_stage="encoder",
+            progress_label=(
+                f"Encoding tumor patches · 0 / {n_after} "
+                f"(kept {n_after}/{n_before}, batch {batch_size})"
+            ),
+            patch_done=0,
+            patch_total=n_after,
+            progress_percent=50,
+        )
         for start in range(0, n_after, batch_size):
             batch = torch.stack(kept_tensors[start : start + batch_size]).to(
                 self.device, non_blocking=True
@@ -491,6 +578,15 @@ class PDACModel(BaseAIModel):
                 else:
                     feats = self.feature_encoder(batch)
             all_feats.append(feats.float().cpu())
+            done = min(start + batch_size, n_after)
+            pct = 50 + int(45 * done / max(1, n_after))
+            report_progress(
+                progress_stage="encoder",
+                progress_label=f"Encoding tumor patches · {done} / {n_after}",
+                patch_done=done,
+                patch_total=n_after,
+                progress_percent=pct,
+            )
 
         feats = torch.cat(all_feats, dim=0)
         # Free encoder VRAM before MIL (tiny) — optional but keeps headroom.
@@ -517,6 +613,14 @@ class PDACModel(BaseAIModel):
             mil_coords = list(kept_coords)
             mil_tumor_prob = kept_tumor_prob
 
+        report_progress(
+            progress_stage="mil",
+            progress_label=f"MIL subtype · {feats_mil.size(0)} patches",
+            patch_done=n_after,
+            patch_total=n_after,
+            progress_percent=96,
+        )
+
         feats_batch = feats_mil.unsqueeze(0).to(self.device).float()
         mil_mask = torch.ones(1, feats_mil.size(0), dtype=torch.bool, device=self.device)
         with torch.no_grad():
@@ -524,6 +628,14 @@ class PDACModel(BaseAIModel):
             probs = torch.softmax(logits, dim=1).cpu().numpy()[0]
             pred = int(logits.argmax(1).item())
             attn_np = attn.squeeze(0).cpu().numpy().astype(np.float32)
+
+        report_progress(
+            progress_stage="done",
+            progress_label="Complete",
+            patch_done=n_after,
+            patch_total=n_after,
+            progress_percent=100,
+        )
 
         return {
             "pred": pred,
@@ -536,6 +648,7 @@ class PDACModel(BaseAIModel):
             "mil_coords": mil_coords,
             "attention": attn_np,
             "mil_tumor_prob": mil_tumor_prob,
+            "batch_size_used": batch_size,
         }
 
     @staticmethod

@@ -99,10 +99,37 @@ def create_job(config: dict, pool: str, payload: dict[str, Any]) -> dict[str, An
         "slide_level_used": None,
         "region_id": payload.get("region_id") or "",
         "has_overlay": False,
+        # Mid-job progress (updated by models via progress_report).
+        "patch_done": None,
+        "patch_total": None,
+        "progress_percent": None,
+        "progress_stage": None,
+        "progress_label": None,
     }
     r.set(_job_key(job_id), json.dumps(job).encode("utf-8"), ex=_JOB_TTL)
     r.rpush(_queue_key(pool), job_id.encode("utf-8"))
     return {"job_id": job_id, "status": STATUS_QUEUED, "pool": pool}
+
+
+def update_job_progress(config: dict, job_id: str, **fields: Any) -> None:
+    """Merge progress fields into a running job (best-effort)."""
+    job = get_job(config, job_id)
+    if not job or job.get("status") in TERMINAL:
+        return
+    allowed = (
+        "patch_done",
+        "patch_total",
+        "progress_percent",
+        "progress_stage",
+        "progress_label",
+    )
+    changed = False
+    for key in allowed:
+        if key in fields and fields[key] is not None:
+            job[key] = fields[key]
+            changed = True
+    if changed:
+        _save_job(config, job)
 
 
 def get_job(config: dict, job_id: str) -> Optional[dict[str, Any]]:
@@ -171,17 +198,27 @@ def start_worker(
                 job["started_at"] = _now()
                 _save_job(config, job)
 
+                from progress_report import reset_progress_reporter, set_progress_reporter
+
+                def _progress(**fields):
+                    update_job_progress(config, job_id, **fields)
+
+                token = set_progress_reporter(_progress)
                 try:
                     with inference_lock:
                         result = process_fn(job["payload"])
                 except Exception as exc:
                     logger.exception("inference job %s failed", job_id)
+                    job = get_job(config, job_id) or job
                     job["status"] = STATUS_FAILED
                     job["error"] = str(exc)
                     job["completed_at"] = _now()
                     _save_job(config, job)
                     continue
+                finally:
+                    reset_progress_reporter(token)
 
+                job = get_job(config, job_id) or job
                 if result.get("status") == "error":
                     job["status"] = STATUS_FAILED
                     job["error"] = result.get("message") or "inference failed"
@@ -216,6 +253,10 @@ def start_worker(
                     if key in result:
                         job[key] = result[key]
 
+                # Mark progress complete when the job succeeds.
+                if job.get("patch_total"):
+                    job["patch_done"] = job["patch_total"]
+                job["progress_percent"] = 100
                 job["status"] = STATUS_SUCCEEDED
                 job["completed_at"] = _now()
                 _save_job(config, job)

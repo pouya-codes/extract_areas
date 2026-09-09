@@ -268,7 +268,7 @@ class ECCancerModel(BaseAIModel):
             'patch_size': 1024,
             'resize_size': 512,
             'stride': 1,
-            'batch_size': 32,
+            'batch_size': 0,
             'tumor_threshold': 0.9,
             'generate_visualization': True
         }
@@ -647,9 +647,41 @@ class ECCancerModel(BaseAIModel):
             total_patches += len(patches)
             
             # Process patches in batches
-            batch_size = params['batch_size']
+            requested_bs = int(params.get('batch_size', 0) or 0)
+            if requested_bs <= 0 and patches:
+                from auto_batch import find_max_batch_size
+
+                sample = patches[0]
+
+                def _try(n: int) -> None:
+                    batch = torch.stack([sample] * n).to(self.device)
+                    with torch.no_grad():
+                        self.patch_classifier(batch)
+                    del batch
+                    if self.device.type == 'cuda':
+                        torch.cuda.empty_cache()
+
+                if not hasattr(self, '_auto_batch_cache'):
+                    self._auto_batch_cache = {}
+                batch_size = self._auto_batch_cache.get('classifier')
+                if not batch_size:
+                    batch_size = find_max_batch_size(_try, max_size=128, min_size=1)
+                    self._auto_batch_cache['classifier'] = batch_size
+                    print(f"EC Cancer auto batch_size = {batch_size}")
+            else:
+                batch_size = max(1, requested_bs or int(params.get('batch_size', 32)))
             tumor_threshold = params['tumor_threshold']
-            
+
+            from progress_report import report_progress
+            n_patches = len(patches)
+            report_progress(
+                progress_stage='classify',
+                progress_label=f'Classifying patches · 0 / {n_patches}',
+                patch_done=0,
+                patch_total=n_patches,
+                progress_percent=5,
+            )
+
             for i in range(0, len(patches), batch_size):
                 batch_patches = patches[i:i + batch_size]
                 batch_coords = patch_coords[i:i + batch_size]
@@ -666,6 +698,15 @@ class ECCancerModel(BaseAIModel):
                     probs = torch.softmax(outputs, dim=1)
                     pred_probs = probs.cpu().numpy()
                     labels = np.argmax(pred_probs, axis=1)
+
+                done = min(i + batch_size, n_patches)
+                report_progress(
+                    progress_stage='classify',
+                    progress_label=f'Classifying patches · {done} / {n_patches}',
+                    patch_done=done,
+                    patch_total=n_patches,
+                    progress_percent=5 + int(90 * done / max(1, n_patches)),
+                )
                 
                 # Identify tumor patches
                 tumor_positive = (
@@ -852,10 +893,13 @@ class ECCancerModel(BaseAIModel):
             },
             'batch_size': {
                 'type': 'int',
-                'default': 32,
-                'min': 1,
+                'default': 0,
+                'min': 0,
                 'max': 128,
-                'description': 'Number of patches to process in parallel'
+                'description': (
+                    'Number of patches to process in parallel. '
+                    '0 = auto (largest batch that fits in VRAM).'
+                )
             },
             'tumor_threshold': {
                 'type': 'float',
