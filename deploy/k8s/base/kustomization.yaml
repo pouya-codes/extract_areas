@@ -15,6 +15,7 @@ resources:
   - networkpolicy.yaml
   - gateway.yaml
   - ingress.yaml
+  - tissue-api.yaml
   - workers/worker-deepliif.yaml
   - workers/worker-hovernet.yaml
   - workers/worker-ec-cancer.yaml

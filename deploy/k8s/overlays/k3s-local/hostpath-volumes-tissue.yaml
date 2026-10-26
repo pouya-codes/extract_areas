@@ -1,0 +1,7 @@
+- op: replace
+  path: /spec/template/spec/volumes/0
+  value:
+    name: model-weights
+    hostPath:
+      path: /data/models
+      type: Directory

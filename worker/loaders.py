@@ -119,7 +119,23 @@ def build_model(name: str, settings: Settings, raw_config: Optional[dict[str, An
         })
 
     else:
-        raise ValueError(f"unknown model '{name}'")
+        # Any other model: models/<name>_model.py must expose
+        # ``build_model(section, device) -> BaseAIModel`` (see
+        # worker/templates/model_template.py). No change here is needed.
+        import importlib
+
+        try:
+            module = importlib.import_module(f"models.{name}_model")
+        except ModuleNotFoundError as exc:
+            raise ValueError(
+                f"unknown model '{name}': no loader branch and no models/{name}_model.py"
+            ) from exc
+        factory = getattr(module, "build_model", None)
+        if factory is None:
+            raise ValueError(
+                f"models/{name}_model.py has no build_model(section, device) function"
+            )
+        model = factory(section, _device(settings, section.get("device", "auto")))
 
     model._is_initialized = True
     logger.info("model %s loaded in %.1fs", name, time.perf_counter() - started)

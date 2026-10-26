@@ -11,7 +11,16 @@ patches:
   - path: hostpath-volumes.yaml
     target:
       kind: Deployment
-      labelSelector: aim.inference/model
+      labelSelector: aim.inference/model,aim.inference/model notin (sam3)
+  - path: hostpath-volumes-tissue.yaml
+    target:
+      kind: Deployment
+      name: tissue-api
+  # Persist the Hugging Face cache (GigaPath encoder, SAM3) across pod restarts.
+  - path: hf-cache.yaml
+    target:
+      kind: Deployment
+      labelSelector: aim.inference/model in (pdac, sam3)
   - target:
       kind: PersistentVolumeClaim
     patch: |
@@ -76,3 +85,14 @@ patches:
       - op: add
         path: /spec/ports/0/nodePort
         value: 30080
+  # And the tissue helpers, which AIMViewer calls synchronously.
+  - target:
+      kind: Service
+      name: tissue-api
+    patch: |
+      - op: replace
+        path: /spec/type
+        value: NodePort
+      - op: add
+        path: /spec/ports/0/nodePort
+        value: 30800

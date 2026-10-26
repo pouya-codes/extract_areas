@@ -2,6 +2,7 @@
 # torch/torchvision come from docker/Dockerfile's base stage (cu126 wheels).
 numpy==1.26.4
 redis>=5.0,<7
+pydantic>=2.7,<3
 prometheus-client>=0.20
 boto3>=1.34
 opencv-python-headless==4.11.0.86

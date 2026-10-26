@@ -9,7 +9,7 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REGISTRY="${REGISTRY:-aimlab}"
 TAG="${TAG:-dev}"
-TARGETS="${TARGETS:-gateway worker-stub worker-hovernet worker-ec worker-pdac worker-deepliif}"
+TARGETS="${TARGETS:-gateway worker-stub worker-hovernet worker-ec worker-pdac worker-deepliif tissue-api}"
 PUSH=0
 [[ "${1:-}" == "--push" ]] && PUSH=1
 

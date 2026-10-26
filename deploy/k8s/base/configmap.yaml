@@ -7,6 +7,9 @@ data:
   # host:port form for the KEDA redis-streams scaler
   REDIS_ADDRESS: redis:6379
   SLIDE_ROOTS: /slides
+  # Prefix of the slide paths AIMViewer sends (OMERO's data dir on the web
+  # host) -> where the slides PVC is mounted in the pods.
+  SLIDE_PATH_MAP: /data/omero/data=/slides
   OVERLAY_STORE: redis
   LOG_FORMAT: json
   LOG_LEVEL: INFO

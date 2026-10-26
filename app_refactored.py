@@ -21,13 +21,10 @@ from typing import Any, Dict, List, Optional
 from PIL import Image, ImageDraw
 from pathlib import Path
 
-# Import model system
+# Import model system. Concrete model classes are imported inside
+# initialize_models() so a container that only serves the mask generator
+# (tissue-api) does not need every model's dependencies installed.
 from models.model_registry import model_registry
-from models.deepliif_model import DeepLIIFModel
-from models.example_model import ExampleModel
-from models.patch_classifier_model import PatchClassifierModel
-from models.ec_cancer_model import ECCancerModel
-from models.hovernet_model import HoVerNetModel
 
 # Import existing utilities (keep your existing imports)
 from mask_generator import MaskGenerator
@@ -106,6 +103,8 @@ def initialize_models():
     # deepliif
     mcfg = models_cfg.get("deepliif") or {}
     if model_enabled_for_pool("deepliif", mcfg, _REPLICA_POOL):
+        from models.deepliif_model import DeepLIIFModel
+
         model_registry.register_model_class("deepliif", DeepLIIFModel)
         errors = validate_model_paths("deepliif", mcfg)
         if errors:
@@ -124,6 +123,8 @@ def initialize_models():
     # patch_classifier
     mcfg = models_cfg.get("patch_classifier") or {}
     if model_enabled_for_pool("patch_classifier", mcfg, _REPLICA_POOL):
+        from models.patch_classifier_model import PatchClassifierModel
+
         model_registry.register_model_class("patch_classifier", PatchClassifierModel)
         errors = validate_model_paths("patch_classifier", mcfg)
         if errors:
@@ -147,6 +148,8 @@ def initialize_models():
     # ec_cancer
     mcfg = models_cfg.get("ec_cancer") or {}
     if model_enabled_for_pool("ec_cancer", mcfg, _REPLICA_POOL):
+        from models.ec_cancer_model import ECCancerModel
+
         model_registry.register_model_class("ec_cancer", ECCancerModel)
         errors = validate_model_paths("ec_cancer", mcfg)
         if errors:
@@ -168,6 +171,8 @@ def initialize_models():
     # hovernet
     mcfg = models_cfg.get("hovernet") or {}
     if model_enabled_for_pool("hovernet", mcfg, _REPLICA_POOL):
+        from models.hovernet_model import HoVerNetModel
+
         model_registry.register_model_class("hovernet", HoVerNetModel)
         errors = validate_model_paths("hovernet", mcfg)
         if errors:

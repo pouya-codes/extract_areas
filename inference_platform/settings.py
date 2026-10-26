@@ -51,6 +51,28 @@ def _get_list(env: Mapping[str, str], name: str, default: tuple[str, ...]) -> tu
     return tuple(item.strip() for item in raw.split(":") if item.strip())
 
 
+def _parse_path_map(raw: Optional[str]) -> tuple[tuple[str, str], ...]:
+    pairs: list[tuple[str, str]] = []
+    for item in (raw or "").split(";"):
+        item = item.strip()
+        if not item:
+            continue
+        if "=" not in item:
+            raise ValueError(f"SLIDE_PATH_MAP entries look like /host/prefix=/container/prefix, got {item!r}")
+        src, dst = (part.strip() for part in item.split("=", 1))
+        pairs.append((src.rstrip("/") or "/", dst.rstrip("/") or "/"))
+    # Longest prefix first so /data/omero/data wins over /data.
+    return tuple(sorted(pairs, key=lambda pair: -len(pair[0])))
+
+
+def map_slide_path(path: str, path_map: tuple[tuple[str, str], ...]) -> str:
+    """Rewrite ``path`` by the first matching host->container prefix."""
+    for src, dst in path_map:
+        if path == src or path.startswith(src + "/"):
+            return dst + path[len(src):]
+    return path
+
+
 @dataclass(frozen=True)
 class Settings:
     """Runtime settings. See ``Settings.from_env`` for the variable names."""
@@ -79,6 +101,10 @@ class Settings:
 
     # --- Slides / inference ----------------------------------------------- #
     slide_roots: tuple[str, ...] = ("/slides",)
+    # Prefix rewrites applied to incoming slide paths before they are opened,
+    # "host_prefix=container_prefix;..." -- AIMViewer sends the path as seen
+    # by OMERO.web, which is rarely where a container mounts the slides.
+    slide_path_map: tuple[tuple[str, str], ...] = ()
     max_region_pixels: int = 64_000_000
 
     # --- Gateway ---------------------------------------------------------- #
@@ -121,6 +147,7 @@ class Settings:
             s3_endpoint_url=_get(env, "OVERLAY_S3_ENDPOINT_URL"),
             s3_region=_get(env, "OVERLAY_S3_REGION"),
             slide_roots=_get_list(env, "SLIDE_ROOTS", cls.slide_roots),
+            slide_path_map=_parse_path_map(_get(env, "SLIDE_PATH_MAP")),
             max_region_pixels=_get_int(env, "MAX_REGION_PIXELS", cls.max_region_pixels),
             api_token=_get(env, "GATEWAY_API_TOKEN"),
             model_catalog_path=_get(env, "MODEL_CATALOG_PATH"),

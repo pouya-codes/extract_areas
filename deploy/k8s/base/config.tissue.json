@@ -1,0 +1,24 @@
+{
+  "_comment": "config.json for the tissue-api container: only the SAM3 mask generator; region models are served by the workers.",
+  "slide_roots": ["/slides"],
+  "max_region_pixels": 64000000,
+  "redis": {"host": "redis", "port": 6379, "db": 0},
+  "mask_generator": {
+    "enabled": true,
+    "backend": "sam3",
+    "sam_model_path": "TBD",
+    "sam2_model_path": "/models/sam2/sam2.1_hiera_large.pt",
+    "sam2_config_path": "/models/sam2/sam2.1_hiera_l.yaml",
+    "sam3_model_id": "facebook/sam3",
+    "sam3_points_per_batch": 64,
+    "sam3_crop_overlap_ratio": 0.4
+  },
+  "pools": {"general": {"gpus": [0], "base_port": 8000}},
+  "models": {
+    "deepliif": {"enabled": false},
+    "patch_classifier": {"enabled": false},
+    "ec_cancer": {"enabled": false},
+    "hovernet": {"enabled": false},
+    "pdac": {"enabled": false}
+  }
+}

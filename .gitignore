@@ -19,3 +19,4 @@ models/PDAC_GigaPath_1024_FT
 
 # systemd bridge secrets
 deploy/systemd/worker.env
+deploy/compose.env

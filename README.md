@@ -9,10 +9,11 @@ each scaled by Kubernetes from its own queue depth.
 |---|---|
 | `inference_platform/` | shared runtime: job store, stream broker, registry, settings, metrics |
 | `gateway/` | FastAPI service AIMViewer talks to |
-| `worker/` | worker loop, model loaders, inference core, stub model |
+| `worker/` | worker loop, model loaders, inference core, stub model, `templates/` for new models |
+| `scripts/new_model.py` | scaffolds a new model: class, requirements, image stage, k8s manifest, config |
 | `models/`, `module/` | the model implementations (unchanged) |
 | `docker/` | one multi-stage Dockerfile, `build.sh` |
-| `deploy/k8s/` | Kustomize base + `prod-gpu`, `k3s-local`, `dev-cpu` overlays (KEDA autoscaling) |
+| `deploy/k8s/` | Kustomize base + `prod-gpu`, `k3s-local`, `dev-cpu` overlays (KEDA autoscaling); `addons/` pins KEDA + NVIDIA device plugin |
 | `deploy/docker-compose*.yml`, `deploy/systemd/` | the same services without Kubernetes |
 | `docs/MICROSERVICES_ARCHITECTURE.md` | design, scaling model, runbook |
 
@@ -22,9 +23,9 @@ docker compose -f deploy/docker-compose.dev.yml up   # redis + gateway + stub wo
 kubectl apply -k deploy/k8s/overlays/prod-gpu        # cluster with GPUs + KEDA
 ```
 
-`app_refactored.py` is the previous monolithic API (all models in one
-process); it still serves the slide-mask / tissue-region helpers and remains
-runnable until those move.
+`app_refactored.py`, the previous monolithic API, now ships as the
+`tissue-api` image with every region model disabled: it serves only the SAM3
+slide-mask / tissue-region helpers.
 
 ---
 

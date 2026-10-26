@@ -8,6 +8,7 @@
 #   docker build -f docker/Dockerfile --target worker-ec        -t aim-inference-worker-ec .
 #   docker build -f docker/Dockerfile --target worker-pdac      -t aim-inference-worker-pdac .
 #   docker build -f docker/Dockerfile --target worker-stub      -t aim-inference-worker-stub .
+#   docker build -f docker/Dockerfile --target tissue-api       -t aim-inference-tissue-api .
 #
 # or ``docker/build.sh`` for all of them. Model weights are NOT in the images;
 # they are mounted at /models (see deploy/k8s/base/config.container.json).
@@ -125,3 +126,17 @@ COPY module/DeepLiff/ /app/module/DeepLiff/
 COPY models/deepliif_model.py /app/models/
 USER 10001
 ENV MODEL_NAME=deepliif
+
+# --------------------------------------------------------------------------- #
+# tissue-api  (slide-mask / tissue-region helpers: SAM3, no region models)
+# --------------------------------------------------------------------------- #
+FROM base AS tissue-api
+COPY worker/requirements/tissue.txt /tmp/model.txt
+RUN pip install -r /tmp/model.txt
+COPY app_refactored.py mask_generator.py inference_jobs.py /app/
+COPY deploy/k8s/base/config.tissue.json /app/config.json
+USER 10001
+ENV AI_REPLICA_POOL=general AI_REPLICA_PORT=8000 HF_HOME=/tmp/hf TISSUE_PORT=8000
+EXPOSE 8000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10m CMD python -c "import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').status==200 else 1)"
+CMD ["sh", "-c", "exec uvicorn app_refactored:app --host 0.0.0.0 --port ${TISSUE_PORT} --workers 1 --timeout-keep-alive 75"]

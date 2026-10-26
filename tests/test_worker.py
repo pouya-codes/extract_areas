@@ -149,3 +149,26 @@ def test_orphaned_task_is_reclaimed_then_given_up(redis_client, settings):
     task = store.get_task(job["job_id"], "tumor:2")
     assert task["status"] == TaskStatus.FAILED and "stopped unexpectedly" in task["error"]
     assert broker.queue_stats("stub")["pending"] == 0
+
+
+def test_slide_path_map(redis_client, settings):
+    from inference_platform.settings import Settings, _parse_path_map, map_slide_path
+
+    pm = _parse_path_map("/data=/x;/data/omero/data=/slides")
+    assert pm == (("/data/omero/data", "/slides"), ("/data", "/x"))   # longest prefix first
+    assert map_slide_path("/data/omero/data/a/b.svs", pm) == "/slides/a/b.svs"
+    assert map_slide_path("/data/other.svs", pm) == "/x/other.svs"
+    assert map_slide_path("/elsewhere.svs", pm) == "/elsewhere.svs"
+    assert Settings.from_env({"SLIDE_PATH_MAP": ""}).slide_path_map == ()
+
+    seen = {}
+
+    def spy_resolve(path, roots):
+        seen["path"] = path
+        return path
+
+    s = Settings(**{**settings.__dict__, "slide_path_map": pm})
+    core = InferenceCore(s, read_region=fake_read_region, resolve_slide_path=spy_resolve, polygon_mask=polygon_mask)
+    model = StubModel(); model.initialize({})
+    out = core.run(model, {"slide_path": "/data/omero/data/s.svs", "roi_bbox": [0, 0, 10, 10], "polygon": []})
+    assert out["status"] == "success" and seen["path"] == "/slides/s.svs"

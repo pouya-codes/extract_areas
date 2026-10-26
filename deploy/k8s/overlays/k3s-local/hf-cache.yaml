@@ -1,0 +1,12 @@
+- op: add
+  path: /spec/template/spec/volumes/-
+  value:
+    name: hf-cache
+    hostPath:
+      path: /data/models/hf-cache
+      type: Directory
+- op: add
+  path: /spec/template/spec/containers/0/volumeMounts/-
+  value:
+    name: hf-cache
+    mountPath: /tmp/hf

@@ -15,7 +15,7 @@ from typing import Any, Callable, Optional
 
 from PIL import Image
 
-from inference_platform.settings import Settings
+from inference_platform.settings import Settings, map_slide_path
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +50,8 @@ class InferenceCore:
         from slide_region import SlideAccessError  # light import, no openslide
 
         try:
-            slide_path = self._resolve(payload["slide_path"], list(self._settings.slide_roots))
+            mapped = map_slide_path(str(payload["slide_path"]), self._settings.slide_path_map)
+            slide_path = self._resolve(mapped, list(self._settings.slide_roots))
             region_image, info = self._read_region(
                 slide_path,
                 payload["roi_bbox"],

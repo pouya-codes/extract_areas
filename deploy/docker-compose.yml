@@ -1,22 +1,17 @@
 # Full stack on one GPU host with Docker Compose (needs the NVIDIA container
-# toolkit). Mirrors the Kubernetes layout: one gateway, one queue, one
-# container per model. Scale a model with e.g.
+# toolkit). Same images and layout as the Kubernetes deployment: one gateway,
+# one queue, one container per model, plus the tissue (SAM3) helper API.
 #
+#   docker compose --env-file deploy/compose.env -f deploy/docker-compose.yml up -d
 #   docker compose -f deploy/docker-compose.yml up -d --scale worker-hovernet=2
 #
-# Each worker container must see exactly one GPU; pin them with
-# NVIDIA_VISIBLE_DEVICES below (defaults assume the 4×T4 host).
+# Each GPU service is pinned to a physical card with GPU_<NAME> (defaults
+# assume the 4×T4 host: light models one per card, tissue shares with
+# DeepLIIF, PDAC has card 3). Two services on one card share its memory.
 name: aim-inference
 
-x-worker-common: &worker-common
+x-gpu-common: &gpu-common
   restart: unless-stopped
-  environment: &worker-env
-    REDIS_URL: redis://redis:6379/0
-    SLIDE_ROOTS: /slides
-    LOG_FORMAT: json
-    OVERLAY_STORE: redis
-    TASK_LEASE_SECONDS: "120"
-    HF_TOKEN: ${HF_TOKEN:-}
   volumes:
     - ${SLIDES_DIR:-/data/omero/data}:/slides:ro
     - ${MODELS_DIR:-/data/models}:/models:ro
@@ -24,18 +19,25 @@ x-worker-common: &worker-common
     redis:
       condition: service_healthy
   stop_grace_period: 30m   # let an in-flight region finish on `compose down`
-  healthcheck:
-    test: ["CMD", "python", "-c", "import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:9100/readyz').status==200 else 1)"]
-    interval: 30s
-    timeout: 5s
-    start_period: 10m
-  deploy:
-    resources:
-      reservations:
-        devices:
-          - driver: nvidia
-            count: 1
-            capabilities: [gpu]
+  logging:
+    driver: json-file
+    options: {max-size: "50m", max-file: "5"}
+
+x-worker-env: &worker-env
+  REDIS_URL: redis://redis:6379/0
+  SLIDE_ROOTS: /slides
+  # AIMViewer sends OMERO.web's path; rewrite its prefix to the mount above.
+  SLIDE_PATH_MAP: ${SLIDE_PATH_MAP:-/data/omero/data=/slides}
+  LOG_FORMAT: json
+  OVERLAY_STORE: redis
+  TASK_LEASE_SECONDS: "120"
+  HF_TOKEN: ${HF_TOKEN:-}
+
+x-worker-health: &worker-health
+  test: ["CMD", "python", "-c", "import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:9100/readyz').status==200 else 1)"]
+  interval: 30s
+  timeout: 5s
+  start_period: 15m
 
 services:
   redis:
@@ -52,10 +54,7 @@ services:
 
   gateway:
     image: ${REGISTRY:-aimlab}/aim-inference-gateway:${TAG:-dev}
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
-      target: gateway
+    build: {context: .., dockerfile: docker/Dockerfile, target: gateway}
     environment:
       REDIS_URL: redis://redis:6379/0
       GATEWAY_API_TOKEN: ${GATEWAY_API_TOKEN:-}
@@ -69,40 +68,96 @@ services:
     restart: unless-stopped
 
   worker-deepliif:
-    <<: *worker-common
+    <<: *gpu-common
     image: ${REGISTRY:-aimlab}/aim-inference-worker-deepliif:${TAG:-dev}
     build: {context: .., dockerfile: docker/Dockerfile, target: worker-deepliif}
     environment:
       <<: *worker-env
       MODEL_NAME: deepliif
-      NVIDIA_VISIBLE_DEVICES: ${GPU_DEEPLIIF:-0}
+    healthcheck: *worker-health
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${GPU_DEEPLIIF:-0}"]
+              capabilities: [gpu]
 
   worker-hovernet:
-    <<: *worker-common
+    <<: *gpu-common
     image: ${REGISTRY:-aimlab}/aim-inference-worker-hovernet:${TAG:-dev}
     build: {context: .., dockerfile: docker/Dockerfile, target: worker-hovernet}
     environment:
       <<: *worker-env
       MODEL_NAME: hovernet
-      NVIDIA_VISIBLE_DEVICES: ${GPU_HOVERNET:-1}
+    healthcheck: *worker-health
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${GPU_HOVERNET:-1}"]
+              capabilities: [gpu]
 
   worker-ec:
-    <<: *worker-common
+    <<: *gpu-common
     image: ${REGISTRY:-aimlab}/aim-inference-worker-ec:${TAG:-dev}
     build: {context: .., dockerfile: docker/Dockerfile, target: worker-ec}
     environment:
       <<: *worker-env
       MODEL_NAME: ec_cancer
-      NVIDIA_VISIBLE_DEVICES: ${GPU_EC:-2}
+    healthcheck: *worker-health
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${GPU_EC:-2}"]
+              capabilities: [gpu]
 
   worker-pdac:
-    <<: *worker-common
+    <<: *gpu-common
     image: ${REGISTRY:-aimlab}/aim-inference-worker-pdac:${TAG:-dev}
     build: {context: .., dockerfile: docker/Dockerfile, target: worker-pdac}
     environment:
       <<: *worker-env
       MODEL_NAME: pdac
-      NVIDIA_VISIBLE_DEVICES: ${GPU_PDAC:-3}
+      HF_HOME: /tmp/hf
+    volumes:
+      - ${SLIDES_DIR:-/data/omero/data}:/slides:ro
+      - ${MODELS_DIR:-/data/models}:/models:ro
+      - ${HF_CACHE_DIR:-/data/models/hf-cache}:/tmp/hf
+    healthcheck: *worker-health
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${GPU_PDAC:-3}"]
+              capabilities: [gpu]
+
+  tissue-api:
+    <<: *gpu-common
+    image: ${REGISTRY:-aimlab}/aim-inference-tissue-api:${TAG:-dev}
+    build: {context: .., dockerfile: docker/Dockerfile, target: tissue-api}
+    environment:
+      HF_TOKEN: ${HF_TOKEN:-}
+      HF_HOME: /tmp/hf
+      EXTRACT_AREAS_REDIS_HOST: redis
+      AI_REPLICA_POOL: general
+    volumes:
+      - ${MODELS_DIR:-/data/models}:/models:ro
+      - ${HF_CACHE_DIR:-/data/models/hf-cache}:/tmp/hf
+    ports:
+      - "${TISSUE_BIND:-127.0.0.1:8010}:8000"
+    stop_grace_period: 2m
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${GPU_TISSUE:-0}"]
+              capabilities: [gpu]
 
 volumes:
   redis-data:
