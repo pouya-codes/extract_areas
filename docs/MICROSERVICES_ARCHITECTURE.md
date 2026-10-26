@@ -38,7 +38,7 @@ out from a daemon thread inside the web process. That had four limits:
   │ worker-   │   │ worker-   │    │ worker-   │    │ worker-   │   KEDA sizes each
   │ deepliif  │   │ hovernet  │    │ ec-cancer │    │ pdac      │   deployment from
   │ 1 GPU/pod │   │ 1 GPU/pod │    │ 1 GPU/pod │    │ 1 GPU/pod │   its stream's lag
-  │ min 1     │   │ min 1     │    │ min 1     │    │ min 0     │
+  │ min 0     │   │ min 0     │    │ min 0     │    │ min 0     │
   └─────┬─────┘   └─────┬─────┘    └─────┬─────┘    └─────┬─────┘
         └───────────────┴────────┬───────┴────────────────┘
                         /slides (RO, shared)   /models (RO, shared)
@@ -120,8 +120,11 @@ lag strictly greater than the threshold.) The Redis address in each trigger
 is fully qualified because the KEDA operator resolves it from the `keda`
 namespace. `cooldownPeriod`
 (10–15 min) keeps a loaded model around between bursts because loading
-takes 1–2 min. PDAC idles at zero: GigaPath is ~10 GB of VRAM and is used
-rarely; its first job of the day waits for a pod to start.
+takes 1–2 min. Every model idles at zero: a pool exists only while it has work, plus
+the cooldown, so idle models hold no GPU memory. The cost is a cold start
+on the first job after an idle period (measured on a T4 with a warm page
+cache: ~50 s to ready, PDAC ~60 s plus its first region). Set
+`minReplicaCount: 1` for a model that needs instant response.
 
 **Adding GPU capacity later** is the point of the design. Any of these
 works without code changes:
@@ -135,8 +138,8 @@ works without code changes:
   per-model `nodeSelector` patch.
 
 **Sizing on the current 4×T4 host** (`overlays/k3s-local`): each model's
-`maxReplicaCount` is 2 and the sum of minimums is 3, leaving one card for
-whichever queue is deepest. Replace the limits once more cards exist.
+`maxReplicaCount` is 2 and every minimum is 0, so the eight time-sliced GPU
+slots go to whichever queues are busy. Replace the limits once more cards exist.
 
 **Throughput ceiling without more GPUs.** Time-slicing (NVIDIA device plugin
 `sharing.timeSlicing`) lets two small-model pods share one T4; it is a

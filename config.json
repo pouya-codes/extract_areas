@@ -1,5 +1,7 @@
 {
-  "slide_roots": ["/data/omero/data"],
+  "slide_roots": [
+    "/data/omero/data"
+  ],
   "max_region_pixels": 64000000,
   "redis": {
     "host": "localhost",
@@ -18,11 +20,17 @@
   },
   "pools": {
     "general": {
-      "gpus": [0, 1, 2],
+      "gpus": [
+        0,
+        1,
+        2
+      ],
       "base_port": 8001
     },
     "heavy": {
-      "gpus": [3],
+      "gpus": [
+        3
+      ],
       "base_port": 8004
     }
   },
@@ -33,7 +41,8 @@
       "lazy_load": false,
       "path": "models/deepliif/",
       "tile_size": 256,
-      "post_processing": true
+      "post_processing": true,
+      "scale_to_zero": true
     },
     "patch_classifier": {
       "enabled": false,
@@ -47,7 +56,8 @@
       "lazy_load": false,
       "patch_classifier_path": "models/EC_model/tumor_normal.pt",
       "representation_path": "models/EC_model/representation.pth",
-      "varmil_path": "models/EC_model/VarMIL.pth"
+      "varmil_path": "models/EC_model/VarMIL.pth",
+      "scale_to_zero": true
     },
     "hovernet": {
       "enabled": true,
@@ -55,7 +65,9 @@
       "lazy_load": false,
       "default_variant": "pannuke",
       "device": "cuda",
-      "gpu_ids": [0],
+      "gpu_ids": [
+        0
+      ],
       "batch_size": 8,
       "variants": {
         "pannuke": {
@@ -86,7 +98,8 @@
           "mode": "original",
           "description": "Kumar - Segmentation only (no type classification)"
         }
-      }
+      },
+      "scale_to_zero": true
     },
     "pdac": {
       "enabled": true,

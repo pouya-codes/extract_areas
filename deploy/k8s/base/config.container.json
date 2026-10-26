@@ -1,9 +1,18 @@
 {
   "_comment": "config.json as used inside containers: slides at /slides, weights at /models. Mount this over /app/config.json or bake it in (the Dockerfile does).",
-  "slide_roots": ["/slides"],
+  "slide_roots": [
+    "/slides"
+  ],
   "max_region_pixels": 64000000,
-  "redis": {"host": "redis", "port": 6379, "db": 0},
-  "mask_generator": {"enabled": false, "backend": "sam3"},
+  "redis": {
+    "host": "redis",
+    "port": 6379,
+    "db": 0
+  },
+  "mask_generator": {
+    "enabled": false,
+    "backend": "sam3"
+  },
   "pools": {},
   "models": {
     "deepliif": {
@@ -11,7 +20,8 @@
       "pool": "general",
       "path": "/models/deepliif/",
       "tile_size": 256,
-      "post_processing": true
+      "post_processing": true,
+      "scale_to_zero": true
     },
     "patch_classifier": {
       "enabled": false,
@@ -23,40 +33,49 @@
       "pool": "general",
       "patch_classifier_path": "/models/EC_model/tumor_normal.pt",
       "representation_path": "/models/EC_model/representation.pth",
-      "varmil_path": "/models/EC_model/VarMIL.pth"
+      "varmil_path": "/models/EC_model/VarMIL.pth",
+      "scale_to_zero": true
     },
     "hovernet": {
       "enabled": true,
       "pool": "general",
       "default_variant": "pannuke",
       "device": "cuda",
-      "gpu_ids": [0],
+      "gpu_ids": [
+        0
+      ],
       "batch_size": 8,
       "variants": {
         "pannuke": {
           "checkpoint": "/models/hovernet_checkpoints/hovernet_fast_pannuke_type_tf2pytorch.tar",
           "type_info": "/models/hovernet_checkpoints/type_info_pannuke.json",
-          "nr_types": 6, "mode": "fast",
+          "nr_types": 6,
+          "mode": "fast",
           "description": "PanNuke - 6 nucleus types (Neoplastic, Inflammatory, Connective, Dead, Epithelial, Background)"
         },
         "consep": {
           "checkpoint": "/models/hovernet_checkpoints/hovernet_original_consep_type_tf2pytorch.tar",
           "type_info": "/models/hovernet_checkpoints/type_info_consep.json",
-          "nr_types": 5, "mode": "original",
+          "nr_types": 5,
+          "mode": "original",
           "description": "CoNSeP - 5 nucleus types (Background, Inflammatory, Epithelial, Spindle, Miscellaneous)"
         },
         "monusac": {
           "checkpoint": "/models/hovernet_checkpoints/hovernet_fast_monusac_type_tf2pytorch.tar",
           "type_info": "/models/hovernet_checkpoints/type_info_monusac.json",
-          "nr_types": 5, "mode": "fast",
+          "nr_types": 5,
+          "mode": "fast",
           "description": "MoNuSAC - 5 nucleus types (Background, Epithelial, Lymphocyte, Macrophage, Neutrophil)"
         },
         "kumar": {
           "checkpoint": "/models/hovernet_checkpoints/hovernet_original_kumar_notype_tf2pytorch.tar",
-          "type_info": null, "nr_types": 0, "mode": "original",
+          "type_info": null,
+          "nr_types": 0,
+          "mode": "original",
           "description": "Kumar - Segmentation only (no type classification)"
         }
-      }
+      },
+      "scale_to_zero": true
     },
     "pdac": {
       "enabled": true,
