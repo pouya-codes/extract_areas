@@ -4,8 +4,9 @@ metadata:
   name: inference-env
 data:
   REDIS_URL: redis://redis:6379/0
-  # host:port form for the KEDA redis-streams scaler
-  REDIS_ADDRESS: redis:6379
+  # host:port for the KEDA redis-streams scaler. Fully qualified: the KEDA
+  # operator runs in the keda namespace, where the short name does not resolve.
+  REDIS_ADDRESS: redis.aim-inference.svc.cluster.local:6379
   SLIDE_ROOTS: /slides
   # Prefix of the slide paths AIMViewer sends (OMERO's data dir on the web
   # host) -> where the slides PVC is mounted in the pods.

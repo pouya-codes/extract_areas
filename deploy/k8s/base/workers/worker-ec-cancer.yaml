@@ -108,9 +108,7 @@ spec:
           emptyDir:
             sizeLimit: 20Gi
 ---
-# Autoscaling: replicas = ceil(queue lag / lagCount), between min and max.
-# Lag = tasks on the stream not yet delivered to any worker, so a running
-# task does not by itself keep the pod count up; cooldownPeriod does.
+# Autoscaling: replicas = ceil(regions queued + running), between min and max.
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
@@ -140,8 +138,11 @@ spec:
   triggers:
     - type: redis-streams
       metadata:
-        addressFromEnv: REDIS_ADDRESS
+        address: redis.aim-inference.svc.cluster.local:6379
         stream: inference:tasks:ec_cancer
-        consumerGroup: workers
-        lagCount: "1"
-        activationLagCount: "1"
+        # Stream length = regions queued + running (workers XDEL on ack), so
+        # replicas = ceil(len / 1). Activation is len > 0: a single queued
+        # region wakes a scaled-to-zero pool. (Lag mode cannot do that: KEDA
+        # rejects activationLagCount 0.)
+        streamLength: "1"
+        activationStreamLength: "0"

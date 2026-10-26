@@ -12,6 +12,10 @@ AIM_CONFIG="${AIM_CONFIG:-/home/ubuntu/code/aimviewer/aimviewer/config.yaml}"
 OMERO_BIN="${OMERO_BIN:-/home/ubuntu/prog/omero/venv_server/bin/omero}"
 cd "$REPO_DIR"
 
+# A shell opened before the user joined the docker group cannot reach the
+# socket until re-login; fall back to sudo rather than failing half-way.
+if docker info >/dev/null 2>&1; then DOCKER=(docker); else DOCKER=(sudo docker); fi
+
 echo "==> 1/7 cluster add-ons (KEDA, NVIDIA device plugin)"
 kubectl apply --server-side -f deploy/k8s/addons/keda-2.16.1.yaml >/dev/null
 kubectl apply -f deploy/k8s/addons/nvidia-device-plugin.yaml >/dev/null
@@ -26,7 +30,7 @@ echo "    nvidia.com/gpu capacity: ${cap:-none}"
 echo "==> 2/7 images into k3s containerd (skips ones already present)"
 for t in gateway worker-hovernet worker-ec worker-pdac worker-deepliif tissue-api; do
     if ! sudo k3s ctr images ls -q | grep -q "aimlab/aim-inference-$t:dev"; then
-        sudo docker save "aimlab/aim-inference-$t:dev" | sudo k3s ctr images import - >/dev/null
+        "${DOCKER[@]}" save "aimlab/aim-inference-$t:dev" | sudo k3s ctr images import - >/dev/null
     fi
 done
 
@@ -34,7 +38,7 @@ echo "==> 3/7 namespace + secret"
 deploy/k8s/overlays/k3s-local/create-secret.sh
 
 echo "==> 4/7 stop the compose stack (frees the GPUs; waits for in-flight regions)"
-docker compose --env-file deploy/compose.env -f deploy/docker-compose.yml down
+"${DOCKER[@]}" compose --env-file deploy/compose.env -f deploy/docker-compose.yml down
 
 echo "==> 5/7 apply"
 kubectl apply -k deploy/k8s/overlays/k3s-local

@@ -64,8 +64,8 @@ stream broker, model registry, overlay store, metrics).
 2. **Queue.** The gateway writes one *job* record and one *task* record per
    region, then `XADD`s one entry per task onto `inference:tasks:<model>`.
    It answers 202 with the job view immediately.
-3. **Scale.** KEDA reads the stream's consumer-group lag every 10 s and sets
-   the model's deployment to `ceil(lag / 1)` pods, between its min and max.
+3. **Scale.** KEDA reads the stream's length every 10 s and sets
+   the model's deployment to `ceil(length / 1)` pods, between its min and max.
    With no GPU free, pods stay Pending until the cluster autoscaler adds a
    node (or an operator does).
 4. **Run.** A worker takes an entry with `XREADGROUP`, marks the task
@@ -110,8 +110,15 @@ the sum of all forty.
 use; concurrency comes from replicas, not threads. Every worker Deployment
 requests `nvidia.com/gpu: 1`.
 
-**KEDA trigger.** `redis-streams` with `lagCount: "1"`: target one pod per
-queued region, so the backlog is what drives scale-out. `cooldownPeriod`
+**KEDA trigger.** `redis-streams` in stream-length mode
+(`streamLength: "1"`, `activationStreamLength: "0"`): workers delete an entry
+once its task finishes, so the stream length is regions queued plus regions
+running, and the target is one pod per such region. One queued region is
+enough to wake a pool that is scaled to zero. (Lag mode looks natural but
+cannot do that: KEDA rejects `activationLagCount: 0`, and activation needs
+lag strictly greater than the threshold.) The Redis address in each trigger
+is fully qualified because the KEDA operator resolves it from the `keda`
+namespace. `cooldownPeriod`
 (10–15 min) keeps a loaded model around between bursts because loading
 takes 1–2 min. PDAC idles at zero: GigaPath is ~10 GB of VRAM and is used
 rarely; its first job of the day waits for a pod to start.

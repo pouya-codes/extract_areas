@@ -1,0 +1,10 @@
+
+# --------------------------------------------------------------------------- #
+# worker-{{dash}}
+# --------------------------------------------------------------------------- #
+FROM base AS worker-{{dash}}
+COPY worker/requirements/{{name}}.txt /tmp/model.txt
+RUN pip install -r /tmp/model.txt
+COPY models/{{name}}_model.py /app/models/
+USER 10001
+ENV MODEL_NAME={{name}}
