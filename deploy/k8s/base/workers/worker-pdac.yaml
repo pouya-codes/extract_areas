@@ -1,0 +1,149 @@
+# pdac worker: one pod = one GPU = one task at a time. KEDA sizes the
+# deployment from the backlog on the model's queue.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-pdac
+  labels:
+    app.kubernetes.io/name: worker-pdac
+    aim.inference/model: pdac
+spec:
+  replicas: 0
+  revisionHistoryLimit: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # A new worker cannot start before the old one releases its GPU.
+      maxSurge: 0
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: worker-pdac
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: worker-pdac
+        app.kubernetes.io/part-of: aim-inference
+        aim.inference/model: pdac
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9100"
+        prometheus.io/path: /metrics
+    spec:
+      priorityClassName: aim-inference-worker
+      # Enough for the largest region to finish after SIGTERM; the worker
+      # stops taking new tasks immediately and exits when the current one ends.
+      terminationGracePeriodSeconds: 1800
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: worker
+          image: aimlab/aim-inference-worker-pdac:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 9100
+          envFrom:
+            - configMapRef: {name: inference-env}
+          env:
+            - name: MODEL_NAME
+              value: pdac
+            - name: WORKER_IMAGE
+              value: aimlab/aim-inference-worker-pdac:dev
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef: {name: inference-secrets, key: HF_TOKEN, optional: true}
+            - name: HF_HOME
+              value: /tmp/hf
+          resources:
+            requests:
+              cpu: "2"
+              memory: 12Gi
+              nvidia.com/gpu: 1
+            limits:
+              cpu: "8"
+              memory: 24Gi
+              nvidia.com/gpu: 1
+          startupProbe:
+            # Model load + warm-up can take minutes on a cold cache.
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 10
+            failureThreshold: 90
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 30
+          volumeMounts:
+            - name: slides
+              mountPath: /slides
+              readOnly: true
+            - name: model-weights
+              mountPath: /models
+              readOnly: true
+            - name: config
+              mountPath: /app/config.json
+              subPath: config.json
+              readOnly: true
+            - name: scratch
+              mountPath: /tmp
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+      volumes:
+        - name: slides
+          persistentVolumeClaim:
+            claimName: slides
+            readOnly: true
+        - name: model-weights
+          persistentVolumeClaim:
+            claimName: model-weights
+            readOnly: true
+        - name: config
+          configMap:
+            name: inference-config
+        - name: scratch
+          emptyDir:
+            sizeLimit: 20Gi
+---
+# Autoscaling: replicas = ceil(queue lag / lagCount), between min and max.
+# Lag = tasks on the stream not yet delivered to any worker, so a running
+# task does not by itself keep the pod count up; cooldownPeriod does.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: worker-pdac
+spec:
+  scaleTargetRef:
+    name: worker-pdac
+  minReplicaCount: 0
+  maxReplicaCount: 2
+  pollingInterval: 10
+  cooldownPeriod: 900
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: 300
+          policies:
+            - type: Pods
+              value: 1
+              periodSeconds: 120
+        scaleUp:
+          stabilizationWindowSeconds: 0
+          policies:
+            - type: Pods
+              value: 4
+              periodSeconds: 30
+  triggers:
+    - type: redis-streams
+      metadata:
+        addressFromEnv: REDIS_ADDRESS
+        stream: inference:tasks:pdac
+        consumerGroup: workers
+        lagCount: "1"
+        activationLagCount: "1"

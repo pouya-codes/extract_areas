@@ -1,0 +1,26 @@
+# Instance name: <model>:<gpu index>, e.g. aim-inference-worker@hovernet:1
+[Unit]
+Description=AIM inference worker %i
+After=network-online.target redis-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/code/extract_areas
+EnvironmentFile=-/home/ubuntu/code/extract_areas/deploy/systemd/worker.env
+ExecStart=/home/ubuntu/code/extract_areas/deploy/systemd/run_worker.sh %i
+# Loading a model can take a couple of minutes on a cold page cache.
+TimeoutStartSec=900
+# SIGTERM lets the worker finish its current region before exiting.
+KillSignal=SIGTERM
+TimeoutStopSec=1800
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=aim-inference-worker-%i
+
+[Install]
+WantedBy=multi-user.target

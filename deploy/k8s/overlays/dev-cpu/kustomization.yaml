@@ -1,0 +1,55 @@
+# Any cluster without GPUs (kind, minikube, a CI runner): gateway + Redis +
+# the stub worker. Proves the queue, scaling and probes end to end.
+#
+#   kubectl apply -k deploy/k8s/overlays/dev-cpu
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+  - worker-stub.yaml
+patches:
+  # Real-model workers are not deployable without GPUs; keep them at zero and
+  # let KEDA stay inert (no GPU nodes -> pods would stay Pending).
+  - target:
+      kind: Deployment
+      labelSelector: aim.inference/model
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 0
+  - target:
+      kind: ScaledObject
+    patch: |
+      - op: replace
+        path: /spec/minReplicaCount
+        value: 0
+  - target:
+      kind: Ingress
+      name: inference-gateway
+    patch: |
+      $patch: delete
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: inference-gateway
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: inference-gateway
+    patch: |
+      - op: replace
+        path: /spec/minReplicas
+        value: 1
+  - target:
+      kind: Deployment
+      name: inference-gateway
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 1
+configMapGenerator:
+  - name: inference-config
+    behavior: replace
+    files:
+      - config.json=catalog.json
+generatorOptions:
+  disableNameSuffixHash: true

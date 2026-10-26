@@ -1,3 +1,8 @@
+> **Note (2026-10):** region inference no longer runs inside the FastAPI
+> monolith described below. It is served by the gateway + per-model workers
+> documented in `docs/MICROSERVICES_ARCHITECTURE.md`; the model registry and
+> `BaseAIModel` interface below are unchanged and are what the workers load.
+
 # Architecture Overview - Refactored App
 
 ## System Architecture

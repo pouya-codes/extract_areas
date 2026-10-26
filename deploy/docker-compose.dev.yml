@@ -1,0 +1,34 @@
+# CPU-only developer stack: Redis + gateway + the stub worker. No weights, no
+# GPU, no slides needed for the API round-trip (a job against a missing slide
+# fails cleanly with a readable error; mount SLIDES_DIR to process real ones).
+#
+#   docker compose -f deploy/docker-compose.dev.yml up --build
+#   curl localhost:8080/v1/models
+name: aim-inference-dev
+
+services:
+  redis:
+    image: redis:7.4-alpine
+    ports: ["127.0.0.1:6380:6379"]
+
+  gateway:
+    build: {context: .., dockerfile: docker/Dockerfile, target: gateway}
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      MODEL_CATALOG_PATH: /app/catalog.dev.json
+      LOG_FORMAT: text
+    volumes:
+      - ./config/catalog.dev.json:/app/catalog.dev.json:ro
+    ports: ["127.0.0.1:8080:8080"]
+    depends_on: [redis]
+
+  worker-stub:
+    build: {context: .., dockerfile: docker/Dockerfile, target: worker-stub}
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      MODEL_NAME: stub
+      SLIDE_ROOTS: /slides
+      LOG_FORMAT: text
+    volumes:
+      - ${SLIDES_DIR:-./config}:/slides:ro
+    depends_on: [redis]

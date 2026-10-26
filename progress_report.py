@@ -11,6 +11,15 @@ from typing import Any, Callable, Optional
 
 ProgressReporter = Callable[..., None]
 
+
+class InferenceCancelled(Exception):
+    """Raised inside a model's progress callback to stop the current region.
+
+    Models call :func:`report_progress` between batches; a reporter that
+    sees a cancel request raises this, and it propagates out of ``process()``
+    so the worker can mark the task cancelled instead of failed.
+    """
+
 _reporter: contextvars.ContextVar[Optional[ProgressReporter]] = contextvars.ContextVar(
     "extract_areas_progress_reporter", default=None
 )
@@ -32,6 +41,8 @@ def report_progress(**fields: Any) -> None:
         return
     try:
         fn(**fields)
+    except InferenceCancelled:
+        raise
     except Exception:
         # Progress must never abort inference.
         pass

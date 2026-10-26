@@ -1,0 +1,29 @@
+# Raise the ceilings once more GPUs are attached; the base is sized for a
+# single 4×T4 host. maxReplicaCount is the only knob that has to change.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: worker-hovernet
+spec:
+  maxReplicaCount: 8
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: worker-deepliif
+spec:
+  maxReplicaCount: 8
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: worker-ec-cancer
+spec:
+  maxReplicaCount: 6
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: worker-pdac
+spec:
+  maxReplicaCount: 4

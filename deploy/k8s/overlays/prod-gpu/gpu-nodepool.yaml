@@ -1,0 +1,25 @@
+# Applied to every worker Deployment: schedule only on the GPU pool. Adding
+# GPU capacity later is a matter of adding nodes with this label (or letting
+# the cluster autoscaler / Karpenter create them when pods go Pending).
+- op: add
+  path: /spec/template/spec/nodeSelector
+  value:
+    aim.inference/gpu: "true"
+- op: add
+  path: /spec/template/spec/tolerations
+  value:
+    - key: nvidia.com/gpu
+      operator: Exists
+      effect: NoSchedule
+- op: add
+  path: /spec/template/spec/affinity
+  value:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 50
+          podAffinityTerm:
+            topologyKey: kubernetes.io/hostname
+            labelSelector:
+              matchExpressions:
+                - key: aim.inference/model
+                  operator: Exists

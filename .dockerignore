@@ -1,0 +1,22 @@
+.git
+.gitmodules
+**/__pycache__
+**/*.pyc
+.env
+.env.*
+!.env.example
+# Weights are mounted at runtime, never baked in.
+models/deepliif/
+models/hovernet_checkpoints/
+models/EC_model/
+models/sam2/
+models/PDAC_GigaPath_1024_FT
+module/sam2/
+module/DeepLiff/.git
+module/hovernet/.git
+docs/
+other/
+temp*
+api_job*
+*.sif
+tests/

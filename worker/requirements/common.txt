@@ -1,0 +1,19 @@
+# Shared by every model worker image (installed on top of the CUDA/torch base).
+# torch/torchvision come from docker/Dockerfile's base stage (cu126 wheels).
+numpy==1.26.4
+redis>=5.0,<7
+prometheus-client>=0.20
+boto3>=1.34
+opencv-python-headless==4.11.0.86
+scipy==1.15.3
+scikit-image==0.25.2
+scikit-learn==1.7.2
+matplotlib==3.10.3
+pillow==11.3.0
+tifffile==2025.5.10
+imagecodecs==2025.3.30
+pandas==2.3.3
+openslide-bin==4.0.0.8
+openslide-python==1.4.2
+requests==2.32.4
+setuptools==80.10.2

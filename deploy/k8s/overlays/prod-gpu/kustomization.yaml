@@ -1,0 +1,36 @@
+# Production: GPU node pool, real image tags, NFS-backed slides and weights.
+#
+#   kubectl apply -k deploy/k8s/overlays/prod-gpu
+#
+# Prerequisites in the cluster (see docs/MICROSERVICES_ARCHITECTURE.md):
+#   * NVIDIA device plugin (exposes nvidia.com/gpu)
+#   * KEDA (keda.sh/v1alpha1 ScaledObject)
+#   * a node pool labelled aim.inference/gpu=true (and tainted, optionally)
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+  - storage-nfs-pv.yaml
+images:
+  - name: aimlab/aim-inference-gateway
+    newName: registry.example.org/aimlab/aim-inference-gateway
+    newTag: "1.0.0"
+  - name: aimlab/aim-inference-worker-deepliif
+    newName: registry.example.org/aimlab/aim-inference-worker-deepliif
+    newTag: "1.0.0"
+  - name: aimlab/aim-inference-worker-hovernet
+    newName: registry.example.org/aimlab/aim-inference-worker-hovernet
+    newTag: "1.0.0"
+  - name: aimlab/aim-inference-worker-ec
+    newName: registry.example.org/aimlab/aim-inference-worker-ec
+    newTag: "1.0.0"
+  - name: aimlab/aim-inference-worker-pdac
+    newName: registry.example.org/aimlab/aim-inference-worker-pdac
+    newTag: "1.0.0"
+patches:
+  - path: gpu-nodepool.yaml
+    target:
+      kind: Deployment
+      labelSelector: aim.inference/model
+  - path: storage-nfs-pvc.yaml
+  - path: scaling.yaml

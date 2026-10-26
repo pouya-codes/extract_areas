@@ -12,7 +12,6 @@ import math
 import os
 from pathlib import Path
 
-import openslide
 from PIL import Image, ImageDraw
 
 # Pillow refuses very large images by default as a decompression-bomb guard.
@@ -103,6 +102,10 @@ def read_region(slide_path, bbox, downsample=1.0, max_pixels=None):
     ``max_pixels`` forces a coarser read, so callers must scale coordinates by
     ``info["downsample"]`` rather than by what they asked for.
     """
+    # Imported here so the path/polygon helpers above stay usable (and
+    # testable) on hosts without the OpenSlide shared library.
+    import openslide
+
     downsample = max(1.0, float(downsample or 1.0))
     slide = openslide.OpenSlide(str(slide_path))
     try:

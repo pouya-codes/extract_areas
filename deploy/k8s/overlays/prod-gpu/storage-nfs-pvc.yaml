@@ -1,0 +1,16 @@
+# Pin the base claims to the NFS volumes above (no dynamic provisioning).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: slides
+spec:
+  storageClassName: ""
+  volumeName: aim-slides
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: model-weights
+spec:
+  storageClassName: ""
+  volumeName: aim-model-weights

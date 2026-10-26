@@ -1,0 +1,14 @@
+- op: replace
+  path: /spec/template/spec/volumes/0
+  value:
+    name: slides
+    hostPath:
+      path: /data/omero/data
+      type: Directory
+- op: replace
+  path: /spec/template/spec/volumes/1
+  value:
+    name: model-weights
+    hostPath:
+      path: /data/models
+      type: Directory

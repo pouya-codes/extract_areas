@@ -1,0 +1,7 @@
+# Stub worker: no ML runtime at all; used for CI and cluster smoke tests.
+numpy==1.26.4
+pillow==11.3.0
+redis>=5.0,<7
+prometheus-client>=0.20
+openslide-bin==4.0.0.8
+openslide-python==1.4.2

@@ -1,0 +1,108 @@
+# Full stack on one GPU host with Docker Compose (needs the NVIDIA container
+# toolkit). Mirrors the Kubernetes layout: one gateway, one queue, one
+# container per model. Scale a model with e.g.
+#
+#   docker compose -f deploy/docker-compose.yml up -d --scale worker-hovernet=2
+#
+# Each worker container must see exactly one GPU; pin them with
+# NVIDIA_VISIBLE_DEVICES below (defaults assume the 4×T4 host).
+name: aim-inference
+
+x-worker-common: &worker-common
+  restart: unless-stopped
+  environment: &worker-env
+    REDIS_URL: redis://redis:6379/0
+    SLIDE_ROOTS: /slides
+    LOG_FORMAT: json
+    OVERLAY_STORE: redis
+    TASK_LEASE_SECONDS: "120"
+    HF_TOKEN: ${HF_TOKEN:-}
+  volumes:
+    - ${SLIDES_DIR:-/data/omero/data}:/slides:ro
+    - ${MODELS_DIR:-/data/models}:/models:ro
+  depends_on:
+    redis:
+      condition: service_healthy
+  stop_grace_period: 30m   # let an in-flight region finish on `compose down`
+  healthcheck:
+    test: ["CMD", "python", "-c", "import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:9100/readyz').status==200 else 1)"]
+    interval: 30s
+    timeout: 5s
+    start_period: 10m
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: 1
+            capabilities: [gpu]
+
+services:
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--save", "60", "1", "--appendonly", "yes", "--maxmemory", "2gb", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  gateway:
+    image: ${REGISTRY:-aimlab}/aim-inference-gateway:${TAG:-dev}
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: gateway
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      GATEWAY_API_TOKEN: ${GATEWAY_API_TOKEN:-}
+      GATEWAY_WORKERS: "2"
+      LOG_FORMAT: json
+    ports:
+      - "${GATEWAY_BIND:-127.0.0.1:8080}:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker-deepliif:
+    <<: *worker-common
+    image: ${REGISTRY:-aimlab}/aim-inference-worker-deepliif:${TAG:-dev}
+    build: {context: .., dockerfile: docker/Dockerfile, target: worker-deepliif}
+    environment:
+      <<: *worker-env
+      MODEL_NAME: deepliif
+      NVIDIA_VISIBLE_DEVICES: ${GPU_DEEPLIIF:-0}
+
+  worker-hovernet:
+    <<: *worker-common
+    image: ${REGISTRY:-aimlab}/aim-inference-worker-hovernet:${TAG:-dev}
+    build: {context: .., dockerfile: docker/Dockerfile, target: worker-hovernet}
+    environment:
+      <<: *worker-env
+      MODEL_NAME: hovernet
+      NVIDIA_VISIBLE_DEVICES: ${GPU_HOVERNET:-1}
+
+  worker-ec:
+    <<: *worker-common
+    image: ${REGISTRY:-aimlab}/aim-inference-worker-ec:${TAG:-dev}
+    build: {context: .., dockerfile: docker/Dockerfile, target: worker-ec}
+    environment:
+      <<: *worker-env
+      MODEL_NAME: ec_cancer
+      NVIDIA_VISIBLE_DEVICES: ${GPU_EC:-2}
+
+  worker-pdac:
+    <<: *worker-common
+    image: ${REGISTRY:-aimlab}/aim-inference-worker-pdac:${TAG:-dev}
+    build: {context: .., dockerfile: docker/Dockerfile, target: worker-pdac}
+    environment:
+      <<: *worker-env
+      MODEL_NAME: pdac
+      NVIDIA_VISIBLE_DEVICES: ${GPU_PDAC:-3}
+
+volumes:
+  redis-data:

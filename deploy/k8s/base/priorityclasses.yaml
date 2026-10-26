@@ -1,0 +1,17 @@
+# The gateway must stay up when GPU nodes are under pressure; workers are
+# preemptible by it but not by ordinary batch jobs.
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: aim-inference-gateway
+value: 100000
+globalDefault: false
+description: Inference gateway (user-facing API)
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: aim-inference-worker
+value: 10000
+globalDefault: false
+description: Inference model workers

@@ -1,0 +1,24 @@
+[Unit]
+Description=AIM inference gateway
+After=network-online.target redis-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/code/extract_areas
+EnvironmentFile=-/home/ubuntu/code/extract_areas/deploy/systemd/worker.env
+Environment=PYTHONPATH=/home/ubuntu/code/extract_areas
+Environment=GATEWAY_HOST=127.0.0.1
+Environment=GATEWAY_PORT=8080
+Environment=GATEWAY_WORKERS=2
+ExecStart=/home/ubuntu/miniconda3/envs/extract_areas/bin/python -m gateway
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=aim-inference-gateway
+
+[Install]
+WantedBy=multi-user.target

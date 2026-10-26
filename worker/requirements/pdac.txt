@@ -1,0 +1,4 @@
+# PDAC GigaPath FT worker.
+timm>=0.9.12
+h5py>=3.8
+huggingface_hub>=0.34.0

@@ -1,0 +1,2 @@
+# HoVer-Net worker (vendored at module/hovernet).
+numba==0.61.2

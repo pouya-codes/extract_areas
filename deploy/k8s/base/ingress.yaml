@@ -1,0 +1,21 @@
+# Optional: expose the gateway to AIMViewer when it runs outside the cluster.
+# Keep it on an internal network / behind the API token; it is not a public API.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: inference-gateway
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 16m
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+spec:
+  rules:
+    - host: inference.aim.internal
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: inference-gateway
+                port:
+                  name: http

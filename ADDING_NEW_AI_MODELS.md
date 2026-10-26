@@ -638,3 +638,21 @@ For questions or issues:
 2. Review API documentation
 3. Test with `example_model.py` first
 4. Open an issue with logs and code samples
+
+## Deploying the model as its own worker
+
+Each model runs in its own container and is scaled independently. After the
+model class works in-process:
+
+1. Add the model's section to `config.json` (local paths) and
+   `deploy/k8s/base/config.container.json` (paths under `/models`).
+2. Add a branch in `worker/loaders.py` that builds the `initialize()` config
+   from that section, and a requirements file in `worker/requirements/`.
+3. Add a `worker-<name>` stage in `docker/Dockerfile` that installs those
+   requirements and copies only this model's code.
+4. Copy one of `deploy/k8s/base/workers/*.yaml`, rename, and set the stream
+   to `inference:tasks:<name>`; add it to `deploy/k8s/base/kustomization.yaml`.
+5. Call `progress_report.report_progress(patch_done=…, patch_total=…)` from
+   the model's batch loop so the panel shows progress and cancel works.
+
+See `docs/MICROSERVICES_ARCHITECTURE.md`.

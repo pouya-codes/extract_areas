@@ -1,0 +1,36 @@
+# NFS exports for slides and weights. Replace server/path for your site.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: aim-slides
+spec:
+  capacity:
+    storage: 1Ti
+  accessModes: [ReadOnlyMany]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  mountOptions: [ro, nfsvers=4.1, noatime]
+  nfs:
+    server: nfs.aim.internal
+    path: /export/omero/data
+  claimRef:
+    namespace: aim-inference
+    name: slides
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: aim-model-weights
+spec:
+  capacity:
+    storage: 50Gi
+  accessModes: [ReadOnlyMany]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  mountOptions: [ro, nfsvers=4.1, noatime]
+  nfs:
+    server: nfs.aim.internal
+    path: /export/models
+  claimRef:
+    namespace: aim-inference
+    name: model-weights

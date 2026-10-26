@@ -1,0 +1,78 @@
+# The current single-node k3s host (4×T4, slides under /data/omero/data,
+# weights under /data/models). hostPath volumes instead of NFS; GPU
+# scheduling needs the NVIDIA device plugin and the nvidia containerd runtime.
+#
+#   kubectl apply -k deploy/k8s/overlays/k3s-local
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+patches:
+  - path: hostpath-volumes.yaml
+    target:
+      kind: Deployment
+      labelSelector: aim.inference/model
+  - target:
+      kind: PersistentVolumeClaim
+    patch: |
+      $patch: delete
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: slides
+  - target:
+      kind: PersistentVolumeClaim
+      name: model-weights
+    patch: |
+      $patch: delete
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: model-weights
+  - target:
+      kind: Ingress
+    patch: |
+      $patch: delete
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: inference-gateway
+  - target:
+      kind: Deployment
+      labelSelector: aim.inference/model
+    patch: |
+      - op: add
+        path: /spec/template/spec/runtimeClassName
+        value: nvidia
+  # One host, four GPUs: never ask for more pods than cards.
+  - target:
+      kind: ScaledObject
+    patch: |
+      - op: replace
+        path: /spec/maxReplicaCount
+        value: 2
+  - target:
+      kind: Deployment
+      name: inference-gateway
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 1
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: inference-gateway
+    patch: |
+      - op: replace
+        path: /spec/minReplicas
+        value: 1
+  # Expose the gateway on the host for AIMViewer (which runs outside k3s).
+  - target:
+      kind: Service
+      name: inference-gateway
+    patch: |
+      - op: replace
+        path: /spec/type
+        value: NodePort
+      - op: add
+        path: /spec/ports/0/nodePort
+        value: 30080

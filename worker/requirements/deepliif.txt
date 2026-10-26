@@ -1,0 +1,10 @@
+# DeepLIIF worker. The DeepLIIF package itself is vendored at module/DeepLiff
+# and imported via sys.path; these are its runtime dependencies.
+numba==0.61.2
+dask==2025.7.0
+dominate==2.9.1
+click==8.1.8
+future==1.0.0
+python-bioformats==4.1.0
+# python-javabridge needs a JDK at build and run time (see Dockerfile stage).
+python-javabridge==4.0.4

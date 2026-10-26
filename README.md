@@ -1,3 +1,33 @@
+# WSI inference platform
+
+The GPU inference behind AIMViewer's **AI Region Process** panel runs as
+microservices: an HTTP **gateway**, a Redis Streams queue, and one
+containerised **worker** per model (DeepLIIF, HoVer-Net, EC cancer, PDAC),
+each scaled by Kubernetes from its own queue depth.
+
+| Where | What |
+|---|---|
+| `inference_platform/` | shared runtime: job store, stream broker, registry, settings, metrics |
+| `gateway/` | FastAPI service AIMViewer talks to |
+| `worker/` | worker loop, model loaders, inference core, stub model |
+| `models/`, `module/` | the model implementations (unchanged) |
+| `docker/` | one multi-stage Dockerfile, `build.sh` |
+| `deploy/k8s/` | Kustomize base + `prod-gpu`, `k3s-local`, `dev-cpu` overlays (KEDA autoscaling) |
+| `deploy/docker-compose*.yml`, `deploy/systemd/` | the same services without Kubernetes |
+| `docs/MICROSERVICES_ARCHITECTURE.md` | design, scaling model, runbook |
+
+```bash
+make test                                            # no GPU needed
+docker compose -f deploy/docker-compose.dev.yml up   # redis + gateway + stub worker
+kubectl apply -k deploy/k8s/overlays/prod-gpu        # cluster with GPUs + KEDA
+```
+
+`app_refactored.py` is the previous monolithic API (all models in one
+process); it still serves the slide-mask / tissue-region helpers and remains
+runnable until those move.
+
+---
+
 # WSI Slide Area Extractor
 
 This project extracts areas/cores from Whole Slide Images (WSI) and process them based on Deepliif moldel.

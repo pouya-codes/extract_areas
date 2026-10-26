@@ -1,0 +1,22 @@
+# Slides and model weights are shared, read-only volumes mounted into every
+# worker. The base declares the claims; overlays bind them to real storage
+# (NFS / EFS / hostPath). ReadOnlyMany lets any number of workers mount them.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: slides
+spec:
+  accessModes: [ReadOnlyMany]
+  resources:
+    requests:
+      storage: 1Ti
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: model-weights
+spec:
+  accessModes: [ReadOnlyMany]
+  resources:
+    requests:
+      storage: 50Gi

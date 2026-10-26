@@ -1,0 +1,27 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: aim-inference
+labels:
+  - includeSelectors: false
+    pairs:
+      app.kubernetes.io/part-of: aim-inference
+resources:
+  - namespace.yaml
+  - priorityclasses.yaml
+  - configmap.yaml
+  - secret.yaml
+  - storage.yaml
+  - redis.yaml
+  - networkpolicy.yaml
+  - gateway.yaml
+  - ingress.yaml
+  - workers/worker-deepliif.yaml
+  - workers/worker-hovernet.yaml
+  - workers/worker-ec-cancer.yaml
+  - workers/worker-pdac.yaml
+configMapGenerator:
+  - name: inference-config
+    files:
+      - config.json=config.container.json
+generatorOptions:
+  disableNameSuffixHash: true

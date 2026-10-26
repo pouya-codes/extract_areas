@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-stub
+  labels:
+    app.kubernetes.io/name: worker-stub
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: worker-stub
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: worker-stub
+        app.kubernetes.io/part-of: aim-inference
+    spec:
+      terminationGracePeriodSeconds: 120
+      containers:
+        - name: worker
+          image: aimlab/aim-inference-worker-stub:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 9100
+          envFrom:
+            - configMapRef: {name: inference-env}
+          env:
+            - name: MODEL_NAME
+              value: stub
+          volumeMounts:
+            - name: config
+              mountPath: /app/config.json
+              subPath: config.json
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: "1", memory: 512Mi}
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+      volumes:
+        - name: config
+          configMap:
+            name: inference-config
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: worker-stub
+spec:
+  scaleTargetRef:
+    name: worker-stub
+  minReplicaCount: 1
+  maxReplicaCount: 5
+  pollingInterval: 5
+  cooldownPeriod: 60
+  triggers:
+    - type: redis-streams
+      metadata:
+        addressFromEnv: REDIS_ADDRESS
+        stream: inference:tasks:stub
+        consumerGroup: workers
+        lagCount: "1"
+        activationLagCount: "1"
