@@ -9,7 +9,6 @@ resources:
   - namespace.yaml
   - priorityclasses.yaml
   - configmap.yaml
-  - secret.yaml
   - storage.yaml
   - redis.yaml
   - networkpolicy.yaml

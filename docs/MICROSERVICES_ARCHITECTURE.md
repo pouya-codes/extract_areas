@@ -199,8 +199,9 @@ make k8s-addons        # needs cluster-admin
 | Runtime settings | env | ConfigMap `inference-env` (`deploy/k8s/base/configmap.yaml`) |
 | `HF_TOKEN`, `GATEWAY_API_TOKEN` | env | Secret `inference-secrets`, created from `deploy/compose.env` by `overlays/k3s-local/create-secret.sh` |
 
-Weights are never baked into images. The committed Secret manifest is an
-empty placeholder; `deploy/compose.env` is gitignored.
+Weights are never baked into images. The Secret is created out of band and is
+not part of any kustomization (`base/secret.example.yaml` is a template only),
+so `kubectl apply -k` can never overwrite it; `deploy/compose.env` is gitignored.
 
 AIMViewer submits slide paths as OMERO.web sees them. `SLIDE_PATH_MAP`
 (`/data/omero/data=/slides`) rewrites that prefix to the pods' mount before

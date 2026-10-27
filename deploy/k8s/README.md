@@ -16,7 +16,7 @@ Kustomize layout:
 make images                                   # build images with Docker
 make k8s-addons                               # KEDA + device plugin (once; cluster-admin)
 make k8s-import-images                        # docker save | k3s ctr images import
-deploy/k8s/overlays/k3s-local/create-secret.sh  # namespace + tokens from deploy/compose.env
+deploy/k8s/overlays/k3s-local/create-secret.sh  # namespace + Secret from deploy/compose.env (kustomize never manages the Secret)
 make k8s-apply-local                          # kubectl apply -k overlays/k3s-local
 kubectl -n aim-inference get deploy,scaledobject,pods
 curl -H "Authorization: Bearer $GATEWAY_API_TOKEN" http://127.0.0.1:30080/v1/models
