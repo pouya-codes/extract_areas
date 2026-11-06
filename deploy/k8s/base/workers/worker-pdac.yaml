@@ -119,7 +119,7 @@ spec:
   scaleTargetRef:
     name: worker-pdac
   minReplicaCount: 0
-  maxReplicaCount: 2
+  maxReplicaCount: 4
   pollingInterval: 10
   cooldownPeriod: 900
   advanced:
