@@ -47,21 +47,23 @@ PY
     -d "$body" | python3 -c "import json,sys; d=json.load(sys.stdin); print('    id', d.get('full_name') or d)"
 }
 
+# The token goes only into the one-off push URL, never into .git/config.
+push_repo() {
+  local repo="$1" dir="${OUT}/$1"
+  git -C "$dir" remote remove origin 2>/dev/null || true
+  git -C "$dir" remote add origin "https://github.com/${ORG}/${repo}.git"
+  git -C "$dir" push "https://x-access-token:${GITHUB_TOKEN}@github.com/${ORG}/${repo}.git" HEAD:main
+}
+
 for name in pdac hovernet ec deepliif; do
   repo="aim-inference-worker-${name}"
   echo "==> ${repo}"
   create_repo "$repo" false
-  dir="${OUT}/${repo}"
-  git -C "$dir" remote remove origin 2>/dev/null || true
-  git -C "$dir" remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${ORG}/${repo}.git"
-  git -C "$dir" push -u origin HEAD:main
+  push_repo "$repo"
 done
 
 echo "==> aim-inference-worker-template"
 create_repo aim-inference-worker-template true
-dir="${OUT}/aim-inference-worker-template"
-git -C "$dir" remote remove origin 2>/dev/null || true
-git -C "$dir" remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${ORG}/aim-inference-worker-template.git"
-git -C "$dir" push -u origin HEAD:main
+push_repo aim-inference-worker-template
 
 echo "done"
