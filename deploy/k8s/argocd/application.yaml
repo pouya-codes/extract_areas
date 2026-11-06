@@ -35,6 +35,9 @@ spec:
     # Cluster manifests live on this branch today (origin/main is older).
     targetRevision: aimviwer2-AI
     path: deploy/k8s/overlays/k3s-local
+    # Declared so Image Updater (Argo CD 3.x no longer sets status.sourceType)
+    # can classify this Application as Kustomize.
+    kustomize: {}
   destination:
     server: https://kubernetes.default.svc
     namespace: aim-inference

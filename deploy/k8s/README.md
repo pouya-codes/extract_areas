@@ -96,13 +96,21 @@ flowchart LR
 
 ### Day-2 flow
 
-1. Push to `aimviwer2-AI` or `main` (paths under `docker/`, `worker/`, `models/`, `module/`, … — see `azure-pipelines.yml`).
-2. Pipeline `model-workers` builds the four targets on pool `k3s-host` and pushes:
-   - `aimlabacr.azurecr.io/aimlab/aim-inference-worker-<model>:<short-sha>`
-   - `…:main` (mutable tag Image Updater watches)
-3. Image Updater sees the new `:main` digest and updates the live Application (write-back method `argocd`). Argo CD syncs; KEDA starts pods with the new image when work arrives.
+**Platform (`extract_areas`):** push to `aimviwer2-AI` / `main` under `docker/`, `worker/`, `inference_platform/`, … Pipeline **`model-workers`** builds and pushes only the shared base image:
 
-Gateway and tissue-api stay on local `aimlab/…:dev` tags (not in this pipeline).
+- `aimlabacr.azurecr.io/aimlab/aim-inference-worker-base:<short-sha>`
+- `…:main`
+
+**Per-model workers:** each model lives in its own repo (Azure DevOps `aimlabdev/cpathportal` today; GitHub `pouya-codes/aim-inference-worker-*` when a PAT is available — see `scripts/seed_model_repos.sh` / `push_model_repos.sh`). Push that repo’s `main` → pipeline **`worker-<model>`** on pool `k3s-host` builds `FROM …/worker-base:main` and pushes:
+
+- `aimlabacr.azurecr.io/aimlab/aim-inference-worker-<model>:<short-sha>`
+- `…:main` (mutable tag Image Updater watches)
+
+Workers already run `image: …/aim-inference-worker-<model>:main` (plus `acr-pull`). Rebuilding one model repo updates only that ACR image; the next scale-up pulls the new `:main` digest (use `imagePullPolicy: Always` when verifying). Image Updater annotations remain on the Application for digest write-back when the updater can classify the app as Kustomize (Argo CD 3.x leaves `status.sourceType` empty — `spec.source.kustomize: {}` is set as a hint).
+
+Gateway and tissue-api stay on local `aimlab/…:dev` tags (not in these pipelines).
+
+**New model:** use GitHub/ADO template repo `aim-inference-worker-template` (or `scripts/seed_model_repos.sh`), then add `deploy/k8s/base/workers/worker-<name>.yaml` + Image Updater annotations in **this** platform repo. `scripts/new_model.py` still scaffolds the platform Deployment/config side.
 
 ### Pin / roll back a worker
 

@@ -1,20 +1,29 @@
 #!/usr/bin/env python3
-"""Scaffold everything a new region-processing model needs to run as a worker.
+"""Scaffold platform-side pieces for a new region-processing model worker.
 
-    python scripts/new_model.py my_model --class MyModel --pool general --min 1 --max 4
+    python scripts/new_model.py my_model --class MyModel --pool general --min 0 --max 4
+
+Preferred day-2 path (multi-repo):
+  1. Create a repo from aim-inference-worker-template (ADO or GitHub), or run
+     scripts/seed_model_repos.sh and copy the template tree.
+  2. Implement models/<name>_model.py + requirements.txt in that repo.
+  3. Run this script in extract_areas to add the k8s Deployment / config only.
+  4. Register Azure Pipeline worker-<name> (yml already in the template) and
+     add Image Updater annotations on the Argo CD Application.
+
+This script still also writes a local monorepo Dockerfile stage + model file so
+`docker/build.sh` keeps working during the transition; canonical image builds
+come from the per-model repo CI (`FROM …/worker-base:main`).
 
 Creates / updates:
   models/<name>_model.py                      from worker/templates/model_template.py
   worker/requirements/<name>.txt              pip deps for this model only
-  docker/Dockerfile                           a worker-<name> stage
+  docker/Dockerfile                           a worker-<name> stage (local builds)
   docker/build.sh                             adds worker-<name> to TARGETS
   deploy/k8s/base/workers/worker-<name>.yaml  Deployment + ScaledObject
   deploy/k8s/base/kustomization.yaml          lists the new file
   config.json, deploy/k8s/base/config.container.json
                                               models.<name> sections (weights_path)
-
-Then: put the weights where config.json says, implement the TODOs in the
-model file, `make test`, `docker/build.sh`, `kubectl apply -k ...`.
 """
 from __future__ import annotations
 
@@ -119,13 +128,19 @@ def main() -> int:
     for item in created:
         print("  ", item)
     print(f"""
-Next steps
-  1. implement the TODOs in {model_path.relative_to(ROOT)}
-  2. list extra pip deps in {req.relative_to(ROOT)}
-  3. put the weights at {weights_local} (mounted as {weights_container} in containers)
-  4. make test            # the stub-based suite still passes; add your own in tests/
-  5. MODEL_NAME={name} python -m worker.main --describe   # publishes the panel schema
-  6. docker/build.sh && kubectl apply -k deploy/k8s/overlays/<overlay>
+Next steps (multi-repo)
+  1. Seed / clone aim-inference-worker-template → aim-inference-worker-{dash}
+     (scripts/seed_model_repos.sh or GitHub \"Use this template\")
+  2. Copy {model_path.relative_to(ROOT)} + {req.relative_to(ROOT)} into that repo;
+     implement TODOs; keep Dockerfile FROM worker-base:main
+  3. Put weights at {weights_local} on the k3s host (mounted as {weights_container})
+  4. Create Azure Pipeline worker-{dash} from the model repo azure-pipelines.yml
+  5. Add Image Updater image-list entry for aim-inference-worker-{dash}
+  6. Push model repo main → ACR; Argo rolls the Deployment
+
+Local monorepo fallback
+  MODEL_NAME={name} python -m worker.main --describe
+  docker/build.sh && kubectl apply -k deploy/k8s/overlays/<overlay>
 """)
     return 0
 

@@ -8,10 +8,14 @@
 #   docker build -f docker/Dockerfile --target worker-ec        -t aim-inference-worker-ec .
 #   docker build -f docker/Dockerfile --target worker-pdac      -t aim-inference-worker-pdac .
 #   docker build -f docker/Dockerfile --target worker-stub      -t aim-inference-worker-stub .
+#   docker build -f docker/Dockerfile --target worker-base      -t aim-inference-worker-base .
 #   docker build -f docker/Dockerfile --target tissue-api       -t aim-inference-tissue-api .
 #
 # or ``docker/build.sh`` for all of them. Model weights are NOT in the images;
 # they are mounted at /models (see deploy/k8s/base/config.container.json).
+#
+# worker-base is the published shared runtime (CUDA + torch + worker/). Per-model
+# GitHub repos build FROM aimlabacr.azurecr.io/aimlab/aim-inference-worker-base.
 
 ARG CUDA_IMAGE=nvidia/cuda:12.6.3-cudnn-runtime-ubuntu22.04
 ARG TORCH_INDEX=https://download.pytorch.org/whl/cu126
@@ -80,6 +84,12 @@ RUN useradd --uid 10001 --no-create-home app && mkdir -p /tmp/mplconfig && chown
 ENV WORKER_HTTP_PORT=9100 LOG_FORMAT=json DEVICE=auto
 EXPOSE 9100
 CMD ["python", "-m", "worker.main"]
+
+# --------------------------------------------------------------------------- #
+# worker-base: published alias of ``base`` for per-model repos
+# (stays root so child Dockerfiles can pip install before USER 10001)
+# --------------------------------------------------------------------------- #
+FROM base AS worker-base
 
 # --------------------------------------------------------------------------- #
 # worker-hovernet

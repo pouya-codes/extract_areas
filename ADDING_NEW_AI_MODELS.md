@@ -23,13 +23,20 @@ The platform uses a consistent interface (`BaseAIModel`) for all AI models. This
 
 ## Quick Start
 
-**5-Step Process:**
+**Multi-repo day-2 flow (preferred):**
 
-1. **Create your model file**: `models/your_model_name_model.py`
-2. **Inherit from BaseAIModel**: Implement required abstract methods
-3. **Register your model**: Add to `model_registry` in your app initialization
-4. **Configure model paths**: Add configuration in your config file
-5. **Test**: Use API endpoints to verify functionality
+1. **Create a model worker repo** from `aim-inference-worker-template` (Azure DevOps `cpathportal` or GitHub `pouya-codes`), or run `scripts/seed_model_repos.sh`.
+2. **Implement** `models/<name>_model.py` + `requirements.txt` in that repo (`Dockerfile` stays `FROM …/worker-base:main`).
+3. **Platform wiring** in `extract_areas`: `python scripts/new_model.py <name> --min 0` (Deployment, ScaledObject, config), plus Image Updater annotations.
+4. **CI**: register Azure Pipeline `worker-<name>` on pool `k3s-host`; push `main` → ACR `:sha` / `:main`.
+5. **Weights** stay on the k3s host under `/data/models` (hostPath); do not commit checkpoints.
+
+**Legacy monorepo path** (still works for local `docker/build.sh`):
+
+1. Create `models/your_model_name_model.py` inheriting `BaseAIModel`
+2. Register / configure paths in `config.json`
+3. Use `scripts/new_model.py` for Dockerfile stage + k8s manifests
+4. Test via API endpoints
 
 ## Step-by-Step Guide
 
