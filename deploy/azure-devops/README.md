@@ -31,12 +31,12 @@ export ADO_ORG=https://dev.azure.com/aimlabdev
 deploy/azure-devops/bootstrap.sh
 ```
 
-That creates the project (if needed), ARM service connection `aim-inference-acr`, pipeline `model-workers`, agent pool `k3s-host`, and installs the self-hosted agent as a systemd user service on this host.
+That creates the project (if needed), ARM service connection `aim-inference-acr`, pipeline `model-workers` (since renamed `worker-base` in ADO), agent pool `k3s-host`, and installs the self-hosted agent as a systemd user service on this host.
 
 ## Queue a build
 
 ```bash
-az pipelines run --name model-workers --org "$ADO_ORG" --project cpathportal
+az pipelines run --id 1 --org "$ADO_ORG" --project cpathportal
 ```
 
 Images land at:

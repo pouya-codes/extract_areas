@@ -1,5 +1,7 @@
 # Kubernetes manifests
 
+System overview (portal, CI/CD, cluster): [`docs/CPATHPORTAL_PLATFORM.md`](../../docs/CPATHPORTAL_PLATFORM.md).
+
 Kustomize layout:
 
 | Path | Purpose |
@@ -96,7 +98,7 @@ flowchart LR
 
 ### Day-2 flow
 
-**Platform (`extract_areas`):** push to `aimviwer2-AI` / `main` under `docker/`, `worker/`, `inference_platform/`, … Pipeline **`model-workers`** builds and pushes only the shared base image:
+**Platform (`extract_areas`):** push to `aimviwer2-AI` / `main` under `docker/`, `worker/`, `inference_platform/`, … Pipeline **`worker-base`** (id 1, created by the bootstrap as `model-workers`) builds and pushes only the shared base image:
 
 - `aimlabacr.azurecr.io/aimlab/aim-inference-worker-base:<short-sha>`
 - `…:main`

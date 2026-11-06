@@ -5,6 +5,10 @@ cancer, PDAC) and the slide-mask helpers run as independently scaled
 services, how a request flows through them, and how to operate and grow the
 deployment.
 
+For the whole system around it (cPathPortal web stack, per-model repos,
+Azure DevOps → ACR → Argo CD), see
+[`CPATHPORTAL_PLATFORM.md`](CPATHPORTAL_PLATFORM.md).
+
 **Current deployment (October 2026):** k3s on the single 4×Tesla T4 host
 (`ai-cpathportal`), overlay `deploy/k8s/overlays/k3s-local`. Every model
 worker scales to zero when idle and is started by KEDA when a region is
