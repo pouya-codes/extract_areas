@@ -1,0 +1,84 @@
+# Build and push the four GPU model workers to Azure Container Registry.
+#
+# Pool: self-hosted agent on the k3s host (pool name k3s-host).
+# Service connection: Azure Resource Manager named aim-inference-acr
+#   (subscription Azure credit, scoped to aimlabacr).
+#
+# Tags pushed per build:
+#   aimlabacr.azurecr.io/aimlab/aim-inference-worker-<model>:<short-sha>
+#   aimlabacr.azurecr.io/aimlab/aim-inference-worker-<model>:main
+#
+# Argo CD Image Updater tracks the :main tag and writes the short-sha back
+# into deploy/k8s/overlays/k3s-local/kustomization.yaml.
+trigger:
+  batch: true
+  branches:
+    include:
+      - main
+      - aimviwer2-AI
+  paths:
+    include:
+      - docker/**
+      - worker/**
+      - models/**
+      - module/**
+      - inference_platform/**
+      - azure-pipelines.yml
+      - deploy/k8s/base/workers/**
+
+pr: none
+
+parameters:
+  - name: targets
+    type: object
+    default:
+      - worker-pdac
+      - worker-hovernet
+      - worker-ec
+      - worker-deepliif
+
+variables:
+  ACR_NAME: aimlabacr
+  REGISTRY: aimlabacr.azurecr.io/aimlab
+  azureSubscription: aim-inference-acr
+
+stages:
+  - stage: Build
+    displayName: Build and push model workers
+    jobs:
+      - ${{ each target in parameters.targets }}:
+        - job: ${{ replace(target, '-', '_') }}
+          displayName: ${{ target }}
+          pool:
+            name: k3s-host
+          timeoutInMinutes: 180
+          steps:
+            - checkout: self
+              submodules: recursive
+              fetchDepth: 1
+
+            - task: AzureCLI@2
+              displayName: az acr login + docker build/push
+              inputs:
+                azureSubscription: $(azureSubscription)
+                scriptType: bash
+                scriptLocation: inlineScript
+                inlineScript: |
+                  set -euo pipefail
+                  SHORT_SHA="$(echo '$(Build.SourceVersion)' | cut -c1-12)"
+                  echo "##vso[task.setvariable variable=SHORT_SHA]$SHORT_SHA"
+                  az acr login --name "$(ACR_NAME)"
+                  export REGISTRY="$(REGISTRY)"
+                  export TAG="$SHORT_SHA"
+                  export TARGETS="${{ target }}"
+                  DOCKER_CONFIG="${AGENT_TEMPDIRECTORY}/docker-config"
+                  mkdir -p "$DOCKER_CONFIG"
+                  export DOCKER_CONFIG
+                  # Reuse the host's docker credentials from az acr login.
+                  # build.sh tags :$TAG; also retag as :main for Image Updater.
+                  docker/build.sh --push
+                  IMAGE="$(REGISTRY)/aim-inference-${{ target }}:${SHORT_SHA}"
+                  MAIN="$(REGISTRY)/aim-inference-${{ target }}:main"
+                  docker tag "$IMAGE" "$MAIN"
+                  docker push "$MAIN"
+                  echo "Pushed $IMAGE and $MAIN"

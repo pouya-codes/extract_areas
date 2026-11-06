@@ -2,11 +2,28 @@
 # weights under /data/models). hostPath volumes instead of NFS; GPU
 # scheduling needs the NVIDIA device plugin and the nvidia containerd runtime.
 #
+# Model workers pull from Azure Container Registry (aimlabacr); gateway and
+# tissue-api stay on the local :dev tags. Argo CD Image Updater rewrites the
+# worker newTag values after each pipeline push.
+#
 #   kubectl apply -k deploy/k8s/overlays/k3s-local
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../base
+images:
+  - name: aimlab/aim-inference-worker-deepliif
+    newName: aimlabacr.azurecr.io/aimlab/aim-inference-worker-deepliif
+    newTag: main
+  - name: aimlab/aim-inference-worker-hovernet
+    newName: aimlabacr.azurecr.io/aimlab/aim-inference-worker-hovernet
+    newTag: main
+  - name: aimlab/aim-inference-worker-ec
+    newName: aimlabacr.azurecr.io/aimlab/aim-inference-worker-ec
+    newTag: main
+  - name: aimlab/aim-inference-worker-pdac
+    newName: aimlabacr.azurecr.io/aimlab/aim-inference-worker-pdac
+    newTag: main
 patches:
   - path: hostpath-volumes.yaml
     target:
@@ -53,13 +70,23 @@ patches:
       - op: add
         path: /spec/template/spec/runtimeClassName
         value: nvidia
+  # Only the four ACR-backed model workers need the registry pull secret
+  # (tissue-api is labelled aim.inference/model=sam3 and must not get it).
+  - target:
+      kind: Deployment
+      labelSelector: aim.inference/model in (pdac, hovernet, ec_cancer, deepliif)
+    patch: |
+      - op: add
+        path: /spec/template/spec/imagePullSecrets
+        value:
+          - name: acr-pull
   # One host, four GPUs: never ask for more pods than cards.
   - target:
       kind: ScaledObject
     patch: |
       - op: replace
         path: /spec/maxReplicaCount
-        value: 2
+        value: 4
   - target:
       kind: Deployment
       name: inference-gateway

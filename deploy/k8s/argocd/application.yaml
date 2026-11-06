@@ -1,0 +1,59 @@
+# Argo CD Application for the local k3s inference stack.
+# Workers pull from ACR; Image Updater rewrites worker tags in the overlay
+# when aimlabacr gets a new :main digest.
+#
+# Install (cluster-admin):
+#   kubectl apply -k deploy/k8s/argocd
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: aim-inference
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    # Four workers Image Updater tracks. Alias = kustomize image name key.
+    # Track the mutable :main tag the Azure Pipeline retags on every build.
+    argocd-image-updater.argoproj.io/image-list: >-
+      deepliif=aimlabacr.azurecr.io/aimlab/aim-inference-worker-deepliif:main,
+      hovernet=aimlabacr.azurecr.io/aimlab/aim-inference-worker-hovernet:main,
+      ec=aimlabacr.azurecr.io/aimlab/aim-inference-worker-ec:main,
+      pdac=aimlabacr.azurecr.io/aimlab/aim-inference-worker-pdac:main
+    argocd-image-updater.argoproj.io/deepliif.update-strategy: digest
+    argocd-image-updater.argoproj.io/hovernet.update-strategy: digest
+    argocd-image-updater.argoproj.io/ec.update-strategy: digest
+    argocd-image-updater.argoproj.io/pdac.update-strategy: digest
+    # argocd write-back updates the live Application (no GitHub PAT required).
+    # For auditable git commits instead, set write-back-method=git,
+    # write-back-target=kustomization, git-branch=main, and pass GITHUB_TOKEN
+    # to deploy/k8s/argocd/install.sh.
+    argocd-image-updater.argoproj.io/write-back-method: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/pouya-codes/extract_areas.git
+    # Cluster manifests live on this branch today (origin/main is older).
+    targetRevision: aimviwer2-AI
+    path: deploy/k8s/overlays/k3s-local
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: aim-inference
+  ignoreDifferences:
+    # KEDA owns replica counts (scale-to-zero); do not thrash on sync.
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas
+  # Automated sync is enabled once the ACR overlay + pipeline commits are on
+  # aimviwer2-AI. Until then keep sync manual so Argo does not roll workers
+  # back to the pre-ACR :dev tags still on the remote.
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
