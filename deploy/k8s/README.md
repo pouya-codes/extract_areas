@@ -46,16 +46,17 @@ flowchart LR
    - AcrPush service principal → `~/.config/aimlabacr-push-sp.json`
    - ACR pull token → `~/.config/aimlabacr-k3s-pull.{username,password}`
 
-2. **Azure DevOps organization** (browser, once): open https://dev.azure.com, create org **`aimlab`** (or set `ADO_ORG` to whatever name you pick). CLI cannot create the first org for a new Microsoft account.
+2. **Azure DevOps organization** (browser, once): this host uses **`aimlabdev`** (`https://dev.azure.com/aimlabdev`) and project **`cpathportal`**.
 
 3. **PAT**: create a Personal Access Token with *Agent Pools (Read & manage)*, *Build (Read & execute)*, *Code (Read)*, *Service Connections (Read, query & manage)*. Export it:
 
    ```bash
    export AZURE_DEVOPS_EXT_PAT=...
-   export ADO_ORG=https://dev.azure.com/aimlab
+   export ADO_ORG=https://dev.azure.com/aimlabdev
+   # ADO_PROJECT defaults to cpathportal
    ```
 
-4. **GitHub service connection**: in the new project, add a GitHub connection named `github-extract-areas` that can read `pouya-codes/extract_areas` (needed before the pipeline create step).
+4. **GitHub service connection**: in project `cpathportal`, add a GitHub connection named `github-extract-areas` that can read `pouya-codes/extract_areas` (needed before the pipeline create step).
 
 5. **Project, pool, ARM connection, pipeline, agent**:
 

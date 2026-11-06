@@ -2,12 +2,12 @@
 # Install (or reconfigure) the Azure DevOps self-hosted agent for pool k3s-host.
 #
 #   export AZURE_DEVOPS_EXT_PAT=...          # Agent Pools (read + manage)
-#   export ADO_ORG=https://dev.azure.com/aimlab
+#   export ADO_ORG=https://dev.azure.com/aimlabdev
 #   deploy/azure-devops/install-agent.sh
 set -euo pipefail
 
-ADO_ORG="${ADO_ORG:-https://dev.azure.com/aimlab}"
-ADO_PROJECT="${ADO_PROJECT:-extract-areas}"
+ADO_ORG="${ADO_ORG:-https://dev.azure.com/aimlabdev}"
+ADO_PROJECT="${ADO_PROJECT:-cpathportal}"
 POOL_NAME="${POOL_NAME:-k3s-host}"
 AGENT_DIR="${AGENT_DIR:-${HOME}/azdo-agent}"
 AGENT_VERSION="${AGENT_VERSION:-4.258.1}"

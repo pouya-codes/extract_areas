@@ -10,13 +10,13 @@
 #     AZURE_DEVOPS_EXT_PAT before running.
 #
 #   export AZURE_DEVOPS_EXT_PAT=...
-#   export ADO_ORG=https://dev.azure.com/aimlab   # change if your org name differs
+#   export ADO_ORG=https://dev.azure.com/aimlabdev
 #   deploy/azure-devops/bootstrap.sh
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-ADO_ORG="${ADO_ORG:-https://dev.azure.com/aimlab}"
-ADO_PROJECT="${ADO_PROJECT:-extract-areas}"
+ADO_ORG="${ADO_ORG:-https://dev.azure.com/aimlabdev}"
+ADO_PROJECT="${ADO_PROJECT:-cpathportal}"
 POOL_NAME="${POOL_NAME:-k3s-host}"
 GITHUB_REPO="${GITHUB_REPO:-pouya-codes/extract_areas}"
 SUBSCRIPTION_ID="${SUBSCRIPTION_ID:-$(az account show --query id -o tsv)}"
@@ -55,20 +55,28 @@ else
 fi
 
 echo "==> 3/5 Azure Resource Manager service connection aim-inference-acr"
-# Prefer the AcrPush SP created during ACR bootstrap.
+# Prefer the AcrPush SP created during ACR bootstrap. Password goes in env
+# (az devops does not accept --azure-rm-service-principal-key on the CLI).
 SP_FILE="${HOME}/.config/aimlabacr-push-sp.json"
 if [[ -f "$SP_FILE" ]]; then
-  APP_ID="$(python3 -c "import json;print(json.load(open('$SP_FILE'))['appId'])")"
-  SP_PASS="$(python3 -c "import json;print(json.load(open('$SP_FILE'))['password'])")"
-  TENANT="$(python3 -c "import json;print(json.load(open('$SP_FILE'))['tenant'])")"
-  az devops service-endpoint azurerm create \
-    --name aim-inference-acr \
-    --azure-rm-service-principal-id "$APP_ID" \
-    --azure-rm-subscription-id "$SUBSCRIPTION_ID" \
-    --azure-rm-subscription-name "$(az account show --query name -o tsv)" \
-    --azure-rm-tenant-id "$TENANT" \
-    --azure-rm-service-principal-key "$SP_PASS" \
-    -o table 2>/dev/null || echo "    service connection may already exist (ok)"
+  if az devops service-endpoint list --query "[?name=='aim-inference-acr'].id" -o tsv | grep -q .; then
+    echo "    already exists"
+  else
+    APP_ID="$(python3 -c "import json;print(json.load(open('$SP_FILE'))['appId'])")"
+    TENANT="$(python3 -c "import json;print(json.load(open('$SP_FILE'))['tenant'])")"
+    export AZURE_DEVOPS_EXT_AZURE_RM_SERVICE_PRINCIPAL_KEY
+    AZURE_DEVOPS_EXT_AZURE_RM_SERVICE_PRINCIPAL_KEY="$(python3 -c "import json;print(json.load(open('$SP_FILE'))['password'])")"
+    az devops service-endpoint azurerm create \
+      --name aim-inference-acr \
+      --azure-rm-service-principal-id "$APP_ID" \
+      --azure-rm-subscription-id "$SUBSCRIPTION_ID" \
+      --azure-rm-subscription-name "$(az account show --query name -o tsv)" \
+      --azure-rm-tenant-id "$TENANT" \
+      -o table
+    EP_ID="$(az devops service-endpoint list --query "[?name=='aim-inference-acr'].id" -o tsv)"
+    az devops service-endpoint update --id "$EP_ID" --enable-for-all true -o none 2>/dev/null || true
+    unset AZURE_DEVOPS_EXT_AZURE_RM_SERVICE_PRINCIPAL_KEY
+  fi
 else
   echo "    missing $SP_FILE; create the ARM service connection in the UI" >&2
 fi
