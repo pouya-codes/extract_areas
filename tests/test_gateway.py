@@ -68,6 +68,69 @@ def test_submit_poll_cancel_overlay(client, redis_client, settings):
     assert client.post("/v1/jobs/missing/cancel").status_code == 404
 
 
+def _png(width, height):
+    from io import BytesIO
+
+    from PIL import Image
+
+    buffer = BytesIO()
+    Image.new("RGBA", (width, height), (200, 30, 30, 128)).save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def test_job_report_pdf(client):
+    from io import BytesIO
+
+    PdfReader = pytest.importorskip("pypdf").PdfReader
+
+    job_id = client.post("/v1/jobs", json=submission()).json()["job"]["job_id"]
+    url = f"/v1/jobs/{job_id}/report.pdf"
+    assert client.get(url).status_code == 409
+    assert client.get("/v1/jobs/missing/report.pdf").status_code == 404
+
+    store = client.app.state.gateway.store
+    store.update_task(
+        job_id, "tumor:1", status=TaskStatus.DONE, has_overlay=True,
+        str_result="Tumor fraction 42%", score={"tumor_fraction": 0.4213, "n_patches": 17},
+        timing={"model_seconds": 1.25},
+    )
+    store.put_overlay(job_id, "tumor:1", _png(3000, 1200))
+    store.update_task(job_id, "tumor:2", status=TaskStatus.FAILED, error="CUDA <out> of memory")
+
+    r = client.get(url)
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"] == "application/pdf"
+    assert r.headers["content-disposition"] == f'attachment; filename="stub-{job_id[:8]}-results.pdf"'
+    reader = PdfReader(BytesIO(r.content))
+    text = "\n".join(page.extract_text() for page in reader.pages)
+    for expected in (job_id, "/slides/a.svs", "alice", "Tumor fraction 42%",
+                     "tumor_fraction: 0.4213", "CUDA <out> of memory", "Region overlays"):
+        assert expected in text
+    assert sum(len(page.images) for page in reader.pages) == 1
+
+    without = client.get(url, params={"overlays": "false"})
+    assert without.status_code == 200
+    assert sum(len(p.images) for p in PdfReader(BytesIO(without.content)).pages) == 0
+    assert len(without.content) < len(r.content)
+
+
+def test_job_report_survives_missing_overlay(client):
+    from io import BytesIO
+
+    PdfReader = pytest.importorskip("pypdf").PdfReader
+
+    job_id = client.post("/v1/jobs", json=submission()).json()["job"]["job_id"]
+    store = client.app.state.gateway.store
+    store.update_task(job_id, "tumor:1", status=TaskStatus.DONE, has_overlay=True)
+    store.update_task(job_id, "tumor:2", status=TaskStatus.DONE, has_overlay=True)
+    store.put_overlay(job_id, "tumor:2", b"not a png")
+
+    r = client.get(f"/v1/jobs/{job_id}/report.pdf")
+    assert r.status_code == 200
+    text = "\n".join(p.extract_text() for p in PdfReader(BytesIO(r.content)).pages)
+    assert text.count("Overlay no longer available") == 2
+
+
 def test_validation_and_limits(client):
     assert client.post("/v1/jobs", json=submission(model_name="unknown")).status_code == 404
     bad = submission()

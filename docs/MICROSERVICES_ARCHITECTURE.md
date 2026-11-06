@@ -314,6 +314,7 @@ the gateway existed.
 | `GET` | `/v1/jobs/{id}` | `{job}` with `status`, `regions[]`, counters, `message`, `error`. |
 | `POST` | `/v1/jobs/{id}/cancel` | |
 | `GET` | `/v1/jobs/{id}/regions/{key}/overlay` | PNG; 409 while the region is not done. |
+| `GET` | `/v1/jobs/{id}/report.pdf?overlays=` | Download the job's results as a PDF: summary, one row per region (result, scores, timing, errors) and each region's overlay. `overlays=false` leaves the images out. 409 while the job is still queued or running. |
 | `GET` | `/v1/jobs?limit=` | Recent jobs, for operators. |
 | `GET` | `/v1/models`, `/v1/models/{name}` | Catalogue with replicas and queue stats. |
 | `GET` | `/v1/queues` | Per-model stream stats. |

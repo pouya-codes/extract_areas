@@ -4,4 +4,6 @@ uvicorn[standard]==0.35.0
 pydantic>=2.7,<3
 redis>=5.0,<7
 prometheus-client>=0.20
+reportlab>=4.0,<5    # job results as PDF
+pillow>=10.0         # downscales overlays embedded in the PDF
 boto3>=1.34          # only used when OVERLAY_STORE=s3

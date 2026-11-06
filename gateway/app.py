@@ -15,6 +15,7 @@ GET  /v1/jobs                         recent jobs (operators)
 GET  /v1/jobs/{id}                    poll
 POST /v1/jobs/{id}/cancel
 GET  /v1/jobs/{id}/regions/{key}/overlay   PNG
+GET  /v1/jobs/{id}/report.pdf         results of a finished job as a PDF
 GET  /v1/queues                       per-model queue depth / lag / pending
 """
 from __future__ import annotations
@@ -31,7 +32,8 @@ from prometheus_client import make_asgi_app
 from inference_platform import __version__, metrics
 from inference_platform.broker import TaskBroker
 from inference_platform.catalog import load_catalog
-from inference_platform.contracts import JobSubmission, TaskStatus
+from gateway.report import build_job_report, report_filename
+from inference_platform.contracts import JobStatus, JobSubmission, TaskStatus
 from inference_platform.overlays import build_overlay_store
 from inference_platform.registry import ModelRegistry
 from inference_platform.settings import Settings, connect_redis
@@ -247,6 +249,23 @@ def create_app(settings: Optional[Settings] = None, redis_client=None) -> FastAP
         if overlay is None:
             raise HTTPException(status_code=404, detail="overlay has expired")
         return Response(content=overlay, media_type="image/png")
+
+    @app.get("/v1/jobs/{job_id}/report.pdf", dependencies=authed)
+    def get_job_report(job_id: str, overlays: bool = Query(default=True)) -> Response:
+        view = state.store.job_view(job_id)
+        if view is None:
+            raise HTTPException(status_code=404, detail="job not found or expired")
+        if view["status"] not in JobStatus.TERMINAL:
+            raise HTTPException(
+                status_code=409,
+                detail=f"job is {view['status']}; the report is available once it finishes",
+            )
+        pdf = build_job_report(view, state.store.get_overlay if overlays else None)
+        return Response(
+            content=pdf,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{report_filename(view)}"'},
+        )
 
     return app
 
