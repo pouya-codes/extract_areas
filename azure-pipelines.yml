@@ -68,10 +68,12 @@ stages:
                 az acr login --name "$(ACR_NAME)"
                 export REGISTRY="$(REGISTRY)"
                 export TAG="$SHORT_SHA"
-                export TARGETS="$(TARGET)"
+                # Hardcode — do not use $(TARGET) alone here; an empty expand
+                # makes build.sh fall back to ALL targets and require DeepLiff.
+                export TARGETS=worker-base
                 docker/build.sh --push
-                IMAGE="$(REGISTRY)/aim-inference-$(TARGET):${SHORT_SHA}"
-                MAIN="$(REGISTRY)/aim-inference-$(TARGET):main"
+                IMAGE="$(REGISTRY)/aim-inference-worker-base:${SHORT_SHA}"
+                MAIN="$(REGISTRY)/aim-inference-worker-base:main"
                 docker tag "$IMAGE" "$MAIN"
                 docker push "$MAIN"
                 echo "Pushed $IMAGE and $MAIN"
