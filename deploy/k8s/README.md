@@ -101,12 +101,12 @@ flowchart LR
 - `aimlabacr.azurecr.io/aimlab/aim-inference-worker-base:<short-sha>`
 - `…:main`
 
-**Per-model workers:** each model lives in its own repo (Azure DevOps `aimlabdev/cpathportal` today; GitHub `pouya-codes/aim-inference-worker-*` when a PAT is available — see `scripts/seed_model_repos.sh` / `push_model_repos.sh`). Push that repo’s `main` → pipeline **`worker-<model>`** on pool `k3s-host` builds `FROM …/worker-base:main` and pushes:
+**Per-model workers:** each model lives in its own private GitHub repo, `pouya-codes/aim-inference-worker-<model>` (created with `scripts/seed_model_repos.sh` / `push_model_repos.sh`). Push that repo’s `main` → pipeline **`worker-<model>`** on pool `k3s-host` builds `FROM …/worker-base:main` and pushes:
 
 - `aimlabacr.azurecr.io/aimlab/aim-inference-worker-<model>:<short-sha>`
 - `…:main` (mutable tag Image Updater watches)
 
-Workers already run `image: …/aim-inference-worker-<model>:main` (plus `acr-pull`). Rebuilding one model repo updates only that ACR image; the next scale-up pulls the new `:main` digest (use `imagePullPolicy: Always` when verifying). Image Updater annotations remain on the Application for digest write-back when the updater can classify the app as Kustomize (Argo CD 3.x leaves `status.sourceType` empty — `spec.source.kustomize: {}` is set as a hint).
+Workers run `image: …/aim-inference-worker-<model>:main` with `acr-pull` and `imagePullPolicy: Always` (k3s-local overlay). Rebuilding one model repo updates only that ACR image; the next scale-up from zero (or `kubectl -n aim-inference rollout restart deploy/worker-<model>`) runs the new build. Image Updater annotations remain on the Application for digest write-back, but the updater currently skips the app because Argo CD 3.x leaves `status.sourceType` empty (`spec.source.kustomize: {}` did not help).
 
 Gateway and tissue-api stay on local `aimlab/…:dev` tags (not in these pipelines).
 
@@ -114,7 +114,7 @@ Gateway and tissue-api stay on local `aimlab/…:dev` tags (not in these pipelin
 
 ### Pin / roll back a worker
 
-Edit the `images:` block in [`overlays/k3s-local/kustomization.yaml`](overlays/k3s-local/kustomization.yaml), set `newTag` to a previous short-sha that exists in ACR, commit to `main`. Argo CD self-heals to that tag. To freeze Image Updater temporarily, remove the app’s `argocd-image-updater.argoproj.io/image-list` annotation.
+Edit the `images:` block in [`overlays/k3s-local/kustomization.yaml`](overlays/k3s-local/kustomization.yaml), set `newTag` to a previous short-sha that exists in ACR, commit to `aimviwer2-AI`, then sync the `aim-inference` app (sync is manual today). To freeze Image Updater temporarily, remove the app’s `argocd-image-updater.argoproj.io/image-list` annotation.
 
 ```bash
 az acr repository show-tags -n aimlabacr --repository aimlab/aim-inference-worker-pdac -o table

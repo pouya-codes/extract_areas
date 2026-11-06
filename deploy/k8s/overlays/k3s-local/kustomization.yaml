@@ -72,6 +72,8 @@ patches:
         value: nvidia
   # Only the four ACR-backed model workers need the registry pull secret
   # (tissue-api is labelled aim.inference/model=sam3 and must not get it).
+  # They track the moving :main tag, so pull on every pod start; otherwise a
+  # node with a cached :main keeps running the old build.
   - target:
       kind: Deployment
       labelSelector: aim.inference/model in (pdac, hovernet, ec_cancer, deepliif)
@@ -80,6 +82,9 @@ patches:
         path: /spec/template/spec/imagePullSecrets
         value:
           - name: acr-pull
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: Always
   # One host, four GPUs: never ask for more pods than cards.
   - target:
       kind: ScaledObject
